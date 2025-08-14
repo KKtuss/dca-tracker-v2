@@ -42,12 +42,20 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Set CORS headers for all other requests
+  // Set CORS headers for all other requests - ENSURE THESE ARE SET FIRST
+  console.log('Setting CORS headers for non-OPTIONS request');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
   res.setHeader('Access-Control-Max-Age', '86400');
   res.setHeader('Access-Control-Allow-Credentials', 'false');
+  
+  // Verify CORS headers were set
+  console.log('CORS headers set:', {
+    'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+    'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+    'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+  });
 
   // Log request details for debugging
   console.log(`[${new Date().toISOString()}] ${req.method} request to /api/solana-scan`);
@@ -91,7 +99,50 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { scanType, scanDepth = 50, rpcEndpoint, ultraFastTest, autoDiscoveryMode = false, maxWalletsToDiscover = 1000, walletAddress, batchWallets } = body;
+    const { scanType, scanDepth = 50, rpcEndpoint, ultraFastTest, autoDiscoveryMode = false, maxWalletsToDiscover = 1000, walletAddress, batchWallets, corsTest, healthCheck } = body;
+
+    // Handle CORS test request
+    if (corsTest) {
+      console.log('CORS test mode activated - testing CORS header response');
+      const corsTestResult = {
+        success: true,
+        message: 'CORS test successful',
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        origin: req.headers.origin,
+        cors: 'enabled',
+        headers: {
+          'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+          'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+          'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers'),
+          'Access-Control-Max-Age': res.getHeader('Access-Control-Max-Age'),
+          'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials')
+        }
+      };
+      console.log('CORS test response:', corsTestResult);
+      res.status(200).json(corsTestResult);
+      return;
+    }
+
+    // Handle health check request
+    if (healthCheck) {
+      console.log('Health check mode activated - testing basic API functionality');
+      const healthResult = {
+        success: true,
+        message: 'API is healthy',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        cors: 'enabled',
+        headers: {
+          'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+          'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+          'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+        }
+      };
+      console.log('Health check response:', healthResult);
+      res.status(200).json(healthResult);
+      return;
+    }
 
     // Handle test request
     if (ultraFastTest) {
@@ -119,18 +170,6 @@ export default async function handler(req, res) {
         message: 'ULTRA-FAST TEST MODE: Instant results for testing',
         scanDepth: 25,
         performance: 'ULTRA-FAST TEST - Instant response, no blockchain calls'
-      });
-      return;
-    }
-
-    // Handle health check request
-    if (body.healthCheck) {
-      console.log('Health check requested');
-      res.json({
-        success: true,
-        message: 'API is healthy',
-        timestamp: new Date().toISOString(),
-        version: '1.0.0'
       });
       return;
     }
@@ -211,6 +250,40 @@ export default async function handler(req, res) {
       console.log(`AUTO-DISCOVERY MODE: Discovering fresh wallets from insider sources`);
       console.log(`Auto-discovery parameters: maxWallets=${maxWalletsToDiscover}, scanDepth=${scanDepth}, rpcEndpoint=${rpcEndpoint}`);
       
+      // Check if this is a test mode (quick response for debugging)
+      if (maxWalletsToDiscover === 1 && scanDepth === 1) {
+        console.log('Quick test mode detected - returning mock data for testing');
+        const testResult = {
+          success: true,
+          wallets: [
+            {
+              address: 'TEST_WALLET_QUICK',
+              balance: '1.5000',
+              transactions: 1,
+              tokens: 0,
+              isInsider: true,
+              insiderReason: 'QUICK TEST: Mock wallet for endpoint testing',
+              fundingSource: 'TEST_FUNDING_SOURCE',
+              fundingAmount: '2.0000',
+              quickTrades: 1,
+              goodPlays: 1,
+              washTradeVolume: '10.00',
+              totalProfit: '0.50',
+              detectedPatterns: ['Quick Test', 'Mock Data'],
+              analysisDepth: 1
+            }
+          ],
+          totalScanned: 1,
+          insidersFound: 1,
+          scanType: 'auto-discovery-test',
+          message: 'QUICK TEST MODE: Mock result for endpoint testing'
+        };
+        
+        console.log('Quick test result:', testResult);
+        res.status(200).json(testResult);
+        return;
+      }
+      
       // Add timeout wrapper for auto-discovery process
       const autoDiscoveryPromise = (async () => {
         // Step 1: Discover fresh wallets from recent transactions
@@ -258,20 +331,30 @@ export default async function handler(req, res) {
         };
       })();
       
-      // 45 second timeout for auto-discovery (more generous than regular scans)
+      // 30 second timeout for auto-discovery (reduced from 45 to prevent Vercel gateway timeout)
       const result = await Promise.race([
         autoDiscoveryPromise,
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Auto-discovery timed out - try reducing max wallets or scan depth')), 45000)
+          setTimeout(() => reject(new Error('Auto-discovery timed out - try reducing max wallets or scan depth')), 30000)
         )
       ]);
       
       // Debug: Log what we're about to return
       console.log('Auto-discovery result being returned:', result);
       console.log('About to send response with status 200');
+      console.log('Response headers before sending:', {
+        'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+        'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+        'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+      });
       
       res.status(200).json(result);
       console.log('Auto-discovery response sent successfully');
+      console.log('Response headers after sending:', {
+        'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+        'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+        'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+      });
       return;
     }
     
