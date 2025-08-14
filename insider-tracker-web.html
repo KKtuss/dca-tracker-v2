@@ -628,6 +628,7 @@
                          <button onclick="testHealthCheck()" class="btn btn-success">🏥 Health Check</button>
                          <button onclick="testCors()" class="btn btn-warning">🔒 CORS Test</button>
                          <button onclick="simpleCorsTest()" class="btn btn-primary">🔍 Simple CORS</button>
+                         <button onclick="plainTextCorsTest()" class="btn btn-light">📝 Plain Text CORS</button>
                          <button onclick="minimalAutoDiscoveryTest()" class="btn btn-dark">🎯 Minimal Auto-Discovery</button>
                          <button onclick="quickAutoDiscoveryTest()" class="btn btn-secondary">⚡ Quick Test</button>
                      </div>
@@ -637,6 +638,7 @@
                          <ul class="mb-0">
                              <li>Use "Health Check" to verify API connectivity</li>
                              <li>Use "Simple CORS" for basic CORS testing</li>
+                             <li>Use "Plain Text CORS" to test CORS with text responses</li>
                              <li>Use "CORS Test" for detailed CORS debugging</li>
                              <li>Use "Minimal Auto-Discovery" to test the actual endpoint</li>
                              <li>Use "Quick Test" for fast mock data testing</li>
@@ -2328,6 +2330,35 @@ async function testBackendConnection() {
              } catch (error) {
                  console.error('Simple CORS test error:', error);
                  showAlert(`Simple CORS Test Error: ${error.message}`, 'error');
+             }
+         }
+         
+         // Plain text CORS test
+         async function plainTextCorsTest() {
+             try {
+                 console.log('📝 Testing plain text CORS functionality...');
+                 
+                 const response = await fetch('https://dca-tracker-v2.vercel.app/api/solana-scan', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                     },
+                     body: JSON.stringify({
+                         plainTextCorsTest: true
+                     })
+                 });
+                 
+                 console.log('Plain text CORS test response status:', response.status);
+                 console.log('Plain text CORS test response headers:', response.headers);
+                 
+                 const text = await response.text();
+                 console.log('Plain text CORS test response:', text);
+                 
+                 showAlert(`Plain Text CORS Test Successful! Response: ${text.substring(0, 100)}...`, 'success');
+                 
+             } catch (error) {
+                 console.error('Plain text CORS test error:', error);
+                 showAlert(`Plain Text CORS Test Error: ${error.message}`, 'error');
              }
          }
 
