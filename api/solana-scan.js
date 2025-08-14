@@ -44,18 +44,29 @@ export default async function handler(req, res) {
 
   // Set CORS headers for all other requests - ENSURE THESE ARE SET FIRST
   console.log('Setting CORS headers for non-OPTIONS request');
+  
+  // Force set CORS headers with explicit values
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
   res.setHeader('Access-Control-Max-Age', '86400');
   res.setHeader('Access-Control-Allow-Credentials', 'false');
   
-  // Verify CORS headers were set
-  console.log('CORS headers set:', {
-    'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
-    'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
-    'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+  // Double-check CORS headers were set
+  const corsOrigin = res.getHeader('Access-Control-Allow-Origin');
+  const corsMethods = res.getHeader('Access-Control-Allow-Methods');
+  const corsHeaders = res.getHeader('Access-Control-Allow-Headers');
+  
+  console.log('CORS headers verification:', {
+    'Access-Control-Allow-Origin': corsOrigin,
+    'Access-Control-Allow-Methods': corsMethods,
+    'Access-Control-Allow-Headers': corsHeaders,
+    'headersSet': !!(corsOrigin && corsMethods && corsHeaders)
   });
+  
+  if (!corsOrigin || !corsMethods || !corsHeaders) {
+    console.error('WARNING: CORS headers not properly set!');
+  }
 
   // Log request details for debugging
   console.log(`[${new Date().toISOString()}] ${req.method} request to /api/solana-scan`);
@@ -99,11 +110,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { scanType, scanDepth = 50, rpcEndpoint, ultraFastTest, autoDiscoveryMode = false, maxWalletsToDiscover = 1000, walletAddress, batchWallets, corsTest, healthCheck } = body;
+    const { scanType, scanDepth = 50, rpcEndpoint, ultraFastTest, autoDiscoveryMode = false, maxWalletsToDiscover = 1000, walletAddress, batchWallets, corsTest, healthCheck, simpleCorsTest } = body;
 
     // Handle CORS test request
     if (corsTest) {
       console.log('CORS test mode activated - testing CORS header response');
+      
+      // Get current CORS headers
+      const currentCorsOrigin = res.getHeader('Access-Control-Allow-Origin');
+      const currentCorsMethods = res.getHeader('Access-Control-Allow-Methods');
+      const currentCorsHeaders = res.getHeader('Access-Control-Allow-Headers');
+      
       const corsTestResult = {
         success: true,
         message: 'CORS test successful',
@@ -112,15 +129,60 @@ export default async function handler(req, res) {
         origin: req.headers.origin,
         cors: 'enabled',
         headers: {
-          'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
-          'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
-          'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers'),
+          'Access-Control-Allow-Origin': currentCorsOrigin,
+          'Access-Control-Allow-Methods': currentCorsMethods,
+          'Access-Control-Allow-Headers': currentCorsHeaders,
           'Access-Control-Max-Age': res.getHeader('Access-Control-Max-Age'),
           'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials')
+        },
+        debug: {
+          headersSet: !!(currentCorsOrigin && currentCorsMethods && currentCorsHeaders),
+          requestHeaders: req.headers,
+          responseHeaders: {
+            'Access-Control-Allow-Origin': currentCorsOrigin,
+            'Access-Control-Allow-Methods': currentCorsMethods,
+            'Access-Control-Allow-Headers': currentCorsHeaders
+          }
         }
       };
+      
       console.log('CORS test response:', corsTestResult);
+      console.log('About to send CORS test response with status 200');
+      
       res.status(200).json(corsTestResult);
+      console.log('CORS test response sent successfully');
+      return;
+    }
+
+    // Handle simple CORS test request (minimal logic)
+    if (simpleCorsTest) {
+      console.log('Simple CORS test mode activated - minimal response for CORS debugging');
+      
+      // Log CORS headers before sending response
+      console.log('Simple CORS test - CORS headers before response:', {
+        'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+        'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+        'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+      });
+      
+      const simpleCorsResult = {
+        success: true,
+        message: 'Simple CORS test successful',
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        cors: 'enabled',
+        headers: {
+          'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+          'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+          'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+        }
+      };
+      
+      console.log('Simple CORS test result:', simpleCorsResult);
+      console.log('About to send simple CORS test response');
+      
+      res.status(200).json(simpleCorsResult);
+      console.log('Simple CORS test response sent successfully');
       return;
     }
 
@@ -250,39 +312,50 @@ export default async function handler(req, res) {
       console.log(`AUTO-DISCOVERY MODE: Discovering fresh wallets from insider sources`);
       console.log(`Auto-discovery parameters: maxWallets=${maxWalletsToDiscover}, scanDepth=${scanDepth}, rpcEndpoint=${rpcEndpoint}`);
       
-      // Check if this is a test mode (quick response for debugging)
-      if (maxWalletsToDiscover === 1 && scanDepth === 1) {
-        console.log('Quick test mode detected - returning mock data for testing');
-        const testResult = {
-          success: true,
-          wallets: [
-            {
-              address: 'TEST_WALLET_QUICK',
-              balance: '1.5000',
-              transactions: 1,
-              tokens: 0,
-              isInsider: true,
-              insiderReason: 'QUICK TEST: Mock wallet for endpoint testing',
-              fundingSource: 'TEST_FUNDING_SOURCE',
-              fundingAmount: '2.0000',
-              quickTrades: 1,
-              goodPlays: 1,
-              washTradeVolume: '10.00',
-              totalProfit: '0.50',
-              detectedPatterns: ['Quick Test', 'Mock Data'],
-              analysisDepth: 1
-            }
-          ],
-          totalScanned: 1,
-          insidersFound: 1,
-          scanType: 'auto-discovery-test',
-          message: 'QUICK TEST MODE: Mock result for endpoint testing'
-        };
-        
-        console.log('Quick test result:', testResult);
-        res.status(200).json(testResult);
-        return;
-      }
+          // Check if this is a test mode (quick response for debugging)
+    if (maxWalletsToDiscover === 1 && scanDepth === 1) {
+      console.log('Quick test mode detected - returning mock data for testing');
+      
+      // Log CORS headers before sending response
+      console.log('Quick test - CORS headers before response:', {
+        'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+        'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+        'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+      });
+      
+      const testResult = {
+        success: true,
+        wallets: [
+          {
+            address: 'TEST_WALLET_QUICK',
+            balance: '1.5000',
+            transactions: 1,
+            tokens: 0,
+            isInsider: true,
+            insiderReason: 'QUICK TEST: Mock wallet for endpoint testing',
+            fundingSource: 'TEST_FUNDING_SOURCE',
+            fundingAmount: '2.0000',
+            quickTrades: 1,
+            goodPlays: 1,
+            washTradeVolume: '10.00',
+            totalProfit: '0.50',
+            detectedPatterns: ['Quick Test', 'Mock Data'],
+            analysisDepth: 1
+          }
+        ],
+        totalScanned: 1,
+        insidersFound: 1,
+        scanType: 'auto-discovery-test',
+        message: 'QUICK TEST MODE: Mock result for endpoint testing'
+      };
+      
+      console.log('Quick test result:', testResult);
+      console.log('About to send quick test response with status 200');
+      
+      res.status(200).json(testResult);
+      console.log('Quick test response sent successfully');
+      return;
+    }
       
       // Add timeout wrapper for auto-discovery process
       const autoDiscoveryPromise = (async () => {
