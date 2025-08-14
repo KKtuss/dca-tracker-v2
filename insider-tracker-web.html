@@ -728,6 +728,7 @@
         <button class="btn btn-success" onclick="testBackendNoCors()" style="margin-left: 10px;">🧪 Test GET Request</button>
         <button class="btn btn-info" onclick="testSimpleEndpoint()" style="margin-left: 10px;">🧪 Test Simple Endpoint</button>
         <button class="btn btn-warning" onclick="testHelloEndpoint()" style="margin-left: 10px;">🧪 Test Hello</button>
+        <button onclick="testCorsEndpoint()" class="btn btn-secondary">Test CORS Endpoint</button>
 
                 <div id="settingsStatus" class="alert alert-info" style="display: none;">
                     Settings saved successfully!
@@ -953,7 +954,7 @@
         // Stop scanning
         function stopScan() {
             isScanning = false;
-                         updateStatus('Scan stopped by user', 'warning');
+            updateStatus('Scan stopped by user', 'warning');
             hideProgress();
         }
 
@@ -2077,6 +2078,35 @@ async function testBackendConnection() {
             } catch (error) {
                 console.error('Hello endpoint test error:', error);
                 alert(`❌ Hello endpoint test error: ${error.message}`);
+            }
+        }
+
+        // Test the CORS endpoint
+        async function testCorsEndpoint() {
+            const backendUrl = 'https://dca-tracker-v2.vercel.app';
+            try {
+                console.log('Testing CORS endpoint...');
+                
+                const response = await fetch(`${backendUrl}/api/test-cors`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ test: true })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showAlert(`✅ CORS endpoint test successful: ${result.message}`, 'success');
+                    updateStatus('CORS endpoint working', 'success');
+                } else {
+                    showAlert(`❌ CORS endpoint test failed: ${response.status} - ${result.message || 'Unknown error'}`, 'error');
+                    updateStatus('CORS endpoint failed', 'error');
+                }
+            } catch (error) {
+                showAlert(`❌ CORS endpoint test error: ${error.message}`, 'error');
+                updateStatus('CORS endpoint error', 'error');
             }
         }
     </script>

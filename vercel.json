@@ -9,6 +9,9 @@
     },
     "api/test-simple.js": {
       "maxDuration": 10
+    },
+    "api/test-cors.js": {
+      "maxDuration": 10
     }
   }
 }
