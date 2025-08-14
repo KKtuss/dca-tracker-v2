@@ -156,63 +156,133 @@ async function scanRecentTransactions(connection, depth) {
   const results = [];
   
   try {
-    // Get recent blockhash
-    const { blockhash } = await connection.getLatestBlockhash();
+    console.log(`Scanning recent transactions with depth: ${depth}`);
     
-    // OPTIMIZATION: Reduce the number of signatures to analyze for speed
-    const tokenProgram = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-    const signatures = await connection.getSignaturesForAddress(
-      tokenProgram,
-      { limit: Math.min(depth, 50) } // Reduced from 100 to 50 for speed
-    );
-
-    // OPTIMIZATION: Analyze fewer transactions (max 10 instead of 20)
-    const maxTransactions = Math.min(signatures.length, 10);
+    // NEW APPROACH: Scan for wallets funded by insider wallets instead of random network scanning
     
-    // Analyze each transaction for insider patterns
-    for (let i = 0; i < maxTransactions; i++) {
+    // Known insider funding wallets
+    const insiderFundingWallets = [
+      '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9', // Binance 2
+      'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t'  // Changenow
+    ];
+    
+    // Scan each insider funding wallet for recent outgoing transactions
+    for (const fundingWallet of insiderFundingWallets) {
       try {
-        const signature = signatures[i];
+        console.log(`Scanning funding wallet: ${fundingWallet}`);
         
-        // OPTIMIZATION: Add timeout for transaction fetch
-        const txPromise = connection.getTransaction(signature.signature, {
-          maxSupportedTransactionVersion: 0
-        });
+        // Get recent transactions from the funding wallet
+        const signatures = await connection.getSignaturesForAddress(
+          new PublicKey(fundingWallet),
+          { limit: Math.min(depth / 2, 25) } // Split depth between the two wallets
+        );
         
-        const tx = await Promise.race([
-          txPromise,
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Transaction timeout')), 8000)
-          )
-        ]);
+        // Analyze transactions to find funded wallets
+        for (let i = 0; i < Math.min(signatures.length, 15); i++) {
+          try {
+            const signature = signatures[i];
+            
+            // OPTIMIZATION: Add timeout for transaction fetch
+            const txPromise = connection.getTransaction(signature.signature, {
+              maxSupportedTransactionVersion: 0
+            });
+            
+            const tx = await Promise.race([
+              txPromise,
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Transaction timeout')), 8000)
+              )
+            ]);
 
-        if (tx && tx.meta && tx.transaction.message.accountKeys.length > 0) {
-          // Extract wallet addresses from transaction
-          const wallets = tx.transaction.message.accountKeys.slice(0, 2); // Reduced from 3 to 2
-          
-          for (const wallet of wallets) {
-            const walletData = await analyzeWalletForInsiderPatterns(connection, wallet.toString(), 50); // Reduced depth to 50
-            if (walletData && walletData.isInsider) {
-              results.push(walletData);
+            if (tx && tx.meta && tx.meta.preBalances && tx.meta.postBalances) {
+              // Find wallets that received SOL from this funding wallet
+              const fundedWallets = findFundedWallets(tx, fundingWallet);
+              
+              for (const fundedWallet of fundedWallets) {
+                // Skip if we already have this wallet
+                if (results.some(r => r.address === fundedWallet.address)) continue;
+                
+                // Analyze the funded wallet
+                const walletData = await analyzeWalletForInsiderPatterns(connection, fundedWallet.address, 50);
+                
+                if (walletData) {
+                  results.push(walletData);
+                  
+                  // Stop if we have enough results
+                  if (results.length >= 20) break;
+                }
+              }
+              
+              if (results.length >= 20) break;
             }
+
+            // OPTIMIZATION: Better rate limiting
+            await new Promise(resolve => setTimeout(resolve, 200)); // Increased from 100ms to 200ms
+            
+          } catch (txError) {
+            console.warn('Transaction analysis failed:', txError.message);
+            continue;
           }
         }
-
-        // OPTIMIZATION: Better rate limiting
-        await new Promise(resolve => setTimeout(resolve, 200)); // Increased from 100ms to 200ms
         
-      } catch (txError) {
-        console.warn('Transaction analysis failed:', txError.message);
+        if (results.length >= 20) break;
+        
+      } catch (fundingWalletError) {
+        console.warn('Funding wallet scan failed:', fundingWalletError.message);
         continue;
       }
     }
 
+    return results;
+    
   } catch (error) {
     console.error('Recent transactions scan failed:', error);
     throw error;
   }
+}
 
-  return results;
+// Helper function to find wallets that received SOL from a funding wallet
+function findFundedWallets(transaction, fundingWallet) {
+  const fundedWallets = [];
+  
+  try {
+    if (transaction.transaction && transaction.transaction.message && transaction.transaction.message.accountKeys) {
+      const accountKeys = transaction.transaction.message.accountKeys;
+      const preBalances = transaction.meta.preBalances;
+      const postBalances = transaction.meta.postBalances;
+      
+      // Find the funding wallet index
+      const fundingWalletIndex = accountKeys.findIndex(key => key.toString() === fundingWallet);
+      
+      if (fundingWalletIndex !== -1 && preBalances[fundingWalletIndex] !== undefined && postBalances[fundingWalletIndex] !== undefined) {
+        // Check if funding wallet sent SOL (negative balance change)
+        const fundingWalletChange = postBalances[fundingWalletIndex] - preBalances[fundingWalletIndex];
+        
+        if (fundingWalletChange < 0) {
+          // Find wallets that received SOL (positive balance change)
+          for (let i = 0; i < accountKeys.length; i++) {
+            if (i !== fundingWalletIndex && preBalances[i] !== undefined && postBalances[i] !== undefined) {
+              const balanceChange = postBalances[i] - preBalances[i];
+              
+              if (balanceChange > 0) {
+                const solAmount = balanceChange / 1e9;
+                if (solAmount >= 0.5 && solAmount <= 2.5) {
+                  fundedWallets.push({
+                    address: accountKeys[i].toString(),
+                    amount: solAmount
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Error finding funded wallets:', error.message);
+  }
+  
+  return fundedWallets;
 }
 
 // Scan specific wallet
@@ -277,11 +347,12 @@ async function analyzeWalletForInsiderPatterns(connection, walletAddress, depth 
       tokens: tokenAnalysis.tokenCount,
       isInsider: insiderAnalysis.isInsider,
       insiderReason: insiderAnalysis.reason,
+      fundingSource: insiderAnalysis.fundingSource,
+      fundingAmount: insiderAnalysis.fundingAmount,
       quickTrades: insiderAnalysis.quickTrades,
-      earlyPlays: insiderAnalysis.earlyPlays,
-      successRate: insiderAnalysis.successRate.toFixed(1),
+      goodPlays: insiderAnalysis.goodPlays,
       washTradeVolume: insiderAnalysis.washTradeVolume,
-      totalProfit: insiderAnalysis.totalProfit.toFixed(2),
+      totalProfit: insiderAnalysis.totalProfit,
       detectedPatterns: insiderAnalysis.patterns,
       analysisDepth: depth
     };
@@ -320,17 +391,26 @@ async function analyzeTokenHoldings(connection, publicKey, signatures) {
 // Check if wallet meets insider criteria
 async function checkInsiderCriteria(connection, publicKey, signatures) {
   try {
+    // NEW INSIDER CRITERIA: Focus on funding sources and trading patterns
+    
+    // Known insider funding wallets
+    const insiderFundingWallets = [
+      '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9', // Binance 2
+      'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t'  // Changenow
+    ];
+    
+    let fundingSource = null;
+    let fundingAmount = 0;
     let quickTrades = 0;        // Trades with <1min hold time
-    let earlyPlays = 0;         // Successful early entries (profitable trades)
+    let goodPlays = 0;          // 4x+ profit trades with longer holding
     let totalTrades = 0;        // Total analyzed trades
-    let successfulTrades = 0;   // Profitable trades
     let totalProfit = 0;        // Total profit from trades
     let washTradeVolume = 0;    // Volume of quick trades (potential wash trading)
     
     // OPTIMIZATION: Analyze fewer transactions for speed (max 50 instead of 100)
     const maxTransactions = Math.min(signatures.length, 50);
     
-    // Analyze recent transactions for insider patterns
+    // First, check if this wallet was funded by known insider wallets
     for (let i = 0; i < maxTransactions; i++) {
       try {
         // OPTIMIZATION: Add timeout for each transaction fetch
@@ -347,6 +427,29 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
         ]);
         
         if (tx && tx.meta && tx.meta.preBalances && tx.meta.postBalances) {
+          // Check if this transaction shows funding from insider wallets
+          if (tx.transaction.message.accountKeys) {
+            for (const key of tx.transaction.message.accountKeys) {
+              const keyString = key.toString();
+              if (insiderFundingWallets.includes(keyString)) {
+                // This wallet interacted with an insider funding wallet
+                // Check if it received SOL (positive balance change)
+                const preBalance = tx.meta.preBalances[0];
+                const postBalance = tx.meta.postBalances[0];
+                const balanceChange = postBalance - preBalance;
+                
+                if (balanceChange > 0) {
+                  const solAmount = balanceChange / 1e9;
+                  if (solAmount >= 0.5 && solAmount <= 2.5) {
+                    fundingSource = keyString;
+                    fundingAmount = solAmount;
+                    console.log(`Found insider funding: ${solAmount.toFixed(4)} SOL from ${keyString}`);
+                  }
+                }
+              }
+            }
+          }
+          
           totalTrades++;
           
           // Calculate profit/loss
@@ -355,7 +458,6 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
           const balanceChange = postBalance - preBalance;
           
           if (balanceChange > 0) {
-            successfulTrades++;
             totalProfit += balanceChange / 1e9;
           }
           
@@ -370,18 +472,18 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
             }
           }
           
-          // Check for early entry indicators (high fee + profitable = early play)
-          if (tx.meta.fee > 10000 && balanceChange > 0) { // High fee + profit indicates early entry
-            earlyPlays++;
-          }
-          
-          // Check for token program interactions (indicates token trading)
-          if (tx.transaction.message.accountKeys.some(key => 
-            key.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
-          )) {
-            // This is a token trade - if profitable, could be early entry
-            if (balanceChange > 0) {
-              earlyPlays++;
+          // Check for "good plays" - 4x+ profit with longer holding time
+          if (i > 0 && signatures[i-1].blockTime && signatures[i].blockTime) {
+            const timeDiff = Math.abs(signatures[i-1].blockTime - signatures[i].blockTime);
+            const solChange = balanceChange / 1e9;
+            
+            // If it's a profitable trade with longer holding time (>5 minutes)
+            if (solChange > 0 && timeDiff > 300) { // 5 minutes
+              // Calculate if it's a "good play" (4x+ profit)
+              // This is a simplified calculation - in reality you'd need to track entry/exit points
+              if (solChange > 0.1) { // Assuming minimum 0.1 SOL profit indicates good play
+                goodPlays++;
+              }
             }
           }
         }
@@ -397,48 +499,49 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
       }
     }
     
-    // Calculate success rate (should be LOW for insiders due to wash trading)
-    const successRate = totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0;
-    
-    // INSIDER CRITERIA: Must meet these conditions
+    // NEW INSIDER CRITERIA: Must meet these conditions
     const isInsider = (
-      quickTrades >= 10 &&          // At least 10 quick trades (wash trading volume)
-      earlyPlays >= 2 &&            // At least 2 early plays (hidden among wash trades)
-      successRate <= 50 &&          // Low success rate due to wash trading
-      totalTrades >= 30             // High transaction volume to mask patterns
+      fundingSource !== null &&     // Must be funded by known insider wallet
+      fundingAmount >= 0.5 &&      // Funding amount between 0.5-2.5 SOL
+      fundingAmount <= 2.5 &&
+      quickTrades >= 5 &&          // At least 5 quick trades (wash trading)
+      goodPlays >= 1 &&            // At least 1 good play (hidden among wash trades)
+      totalTrades >= 20            // Sufficient transaction volume
     );
     
     // Determine reason for classification
     let reason = '';
     if (isInsider) {
-      reason = `INSIDER: ${quickTrades} wash trades, ${earlyPlays} early plays, ${successRate.toFixed(1)}% win rate (low due to wash trading)`;
+      reason = `INSIDER: Funded by ${fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'} with ${fundingAmount.toFixed(4)} SOL. ${quickTrades} wash trades, ${goodPlays} good plays.`;
     } else {
       const missing = [];
-      if (quickTrades < 10) missing.push(`Need ${10-quickTrades} more wash trades`);
-      if (earlyPlays < 2) missing.push(`Need ${2-earlyPlays} more early plays`);
-      if (successRate > 50) missing.push(`Win rate too high (${successRate.toFixed(1)}%) - insiders have low rates`);
-      if (totalTrades < 30) missing.push(`Need ${30-totalTrades} more total trades`);
+      if (!fundingSource) missing.push('Not funded by insider wallet');
+      if (fundingAmount < 0.5 || fundingAmount > 2.5) missing.push(`Funding amount ${fundingAmount.toFixed(4)} SOL outside 0.5-2.5 range`);
+      if (quickTrades < 5) missing.push(`Need ${5-quickTrades} more wash trades`);
+      if (goodPlays < 1) missing.push(`Need ${1-goodPlays} more good plays`);
+      if (totalTrades < 20) missing.push(`Need ${20-totalTrades} more total trades`);
       reason = `NOT INSIDER: ${missing.join(', ')}`;
     }
     
     // Get detected patterns
     const patterns = [];
-    if (quickTrades >= 10) patterns.push('High Wash Trading');
-    if (earlyPlays >= 2) patterns.push('Hidden Early Plays');
-    if (successRate <= 50) patterns.push('Low Win Rate (Wash Trading)');
-    if (totalTrades >= 30) patterns.push('High Transaction Volume');
+    if (fundingSource) patterns.push(`Funded by ${fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'}`);
+    if (fundingAmount >= 0.5 && fundingAmount <= 2.5) patterns.push('Optimal Funding Range');
+    if (quickTrades >= 5) patterns.push('High Wash Trading');
+    if (goodPlays >= 1) patterns.push('Hidden Good Plays');
+    if (totalTrades >= 20) patterns.push('High Transaction Volume');
     
     return {
       isInsider,
       reason,
+      fundingSource,
+      fundingAmount: fundingAmount.toFixed(4),
       quickTrades,
-      earlyPlays,
-      successRate,
+      goodPlays,
       washTradeVolume: washTradeVolume.toFixed(2),
-      totalProfit,
+      totalProfit: totalProfit.toFixed(2),
       patterns,
-      totalTrades,
-      successfulTrades
+      totalTrades
     };
     
   } catch (error) {
@@ -446,14 +549,14 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
     return {
       isInsider: false,
       reason: 'Analysis failed',
+      fundingSource: null,
+      fundingAmount: '0.0000',
       quickTrades: 0,
-      earlyPlays: 0,
-      successRate: 0,
+      goodPlays: 0,
       washTradeVolume: '0.00',
-      totalProfit: 0,
+      totalProfit: '0.00',
       patterns: [],
-      totalTrades: 0,
-      successfulTrades: 0
+      totalTrades: 0
     };
   }
 }
