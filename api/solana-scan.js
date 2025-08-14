@@ -112,30 +112,36 @@ export default async function handler(req, res) {
     }
 
     // OPTIMIZATION: Limit scan depth to prevent timeouts
-    const limitedScanDepth = Math.min(scanDepth || 100, 200); // Reduced max to 200 transactions
+    const limitedScanDepth = Math.min(scanDepth || 100, 100); // Reduced max to 100 transactions
     
     // Use Helius RPC or fallback to public
     const endpoint = rpcEndpoint || 'https://api.mainnet-beta.solana.com';
     const connection = new Connection(endpoint, 'confirmed');
-
+    
+    console.log(`Starting scan with depth: ${limitedScanDepth}`);
+    console.log(`Using RPC endpoint: ${endpoint}`);
+    
     let results = [];
-
-    // OPTIMIZATION: Add overall timeout for the entire scan - REDUCED to 25 seconds
+    
+    // OPTIMIZATION: Add overall timeout for the entire scan - REDUCED to 15 seconds
     const scanPromise = (async () => {
-      if (scanType === 'recent') {
-        results = await scanRecentTransactions(connection, limitedScanDepth);
-      } else if (scanType === 'specific') {
+      if (scanType === 'specific' && walletAddress) {
+        console.log(`Scanning specific wallet: ${walletAddress}`);
         results = await scanSpecificWallet(connection, walletAddress, limitedScanDepth);
-      } else if (scanType === 'batch') {
+      } else if (scanType === 'batch' && batchWallets && batchWallets.length > 0) {
+        console.log(`Scanning batch of ${batchWallets.length} wallets`);
         results = await scanBatchWallets(connection, batchWallets, limitedScanDepth);
+      } else {
+        console.log(`Scanning recent transactions with depth: ${limitedScanDepth}`);
+        results = await scanRecentTransactions(connection, limitedScanDepth);
       }
     })();
 
-    // 25 second overall timeout (reduced from 60)
+    // 15 second overall timeout (reduced from 25)
     await Promise.race([
       scanPromise,
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Scan timeout - too many transactions to analyze')), 25000)
+        setTimeout(() => reject(new Error('Scan timeout - too many transactions to analyze')), 15000)
       )
     ]);
 
@@ -144,7 +150,7 @@ export default async function handler(req, res) {
       data: results,
       message: `Found ${results.length} wallets with insider patterns`,
       scanDepth: limitedScanDepth,
-      performance: 'Optimized for speed - limited to 200 transactions max'
+      performance: 'Ultra-fast scan - limited to 100 transactions max, 15 second timeout'
     }));
 
   } catch (error) {
@@ -172,7 +178,7 @@ async function scanRecentTransactions(connection, depth) {
   try {
     console.log(`Scanning recent transactions with depth: ${depth}`);
     
-    // NEW APPROACH: Scan for wallets funded by insider wallets instead of random network scanning
+    // ULTRA-FAST APPROACH: Only scan the most recent transactions with minimal analysis
     
     // Known insider funding wallets
     const insiderFundingWallets = [
@@ -180,73 +186,72 @@ async function scanRecentTransactions(connection, depth) {
       'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t'  // Changenow
     ];
     
-    // Scan each insider funding wallet for recent outgoing transactions
-    for (const fundingWallet of insiderFundingWallets) {
-      try {
-        console.log(`Scanning funding wallet: ${fundingWallet}`);
-        
-        // Get recent transactions from the funding wallet
-        const signatures = await connection.getSignaturesForAddress(
-          new PublicKey(fundingWallet),
-          { limit: Math.min(depth / 2, 25) } // Split depth between the two wallets
-        );
-        
-        // Analyze transactions to find funded wallets
-        for (let i = 0; i < Math.min(signatures.length, 15); i++) {
-          try {
-            const signature = signatures[i];
-            
-            // OPTIMIZATION: Add timeout for transaction fetch
-            const txPromise = connection.getTransaction(signature.signature, {
-              maxSupportedTransactionVersion: 0
-            });
-            
-            const tx = await Promise.race([
-              txPromise,
-              new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Transaction timeout')), 8000)
-              )
-            ]);
+    // OPTIMIZATION: Only scan first funding wallet to save time
+    const fundingWallet = insiderFundingWallets[0];
+    console.log(`Scanning funding wallet: ${fundingWallet}`);
+    
+    try {
+      // Get only the most recent transactions (reduced from 25 to 10)
+      const signatures = await connection.getSignaturesForAddress(
+        new PublicKey(fundingWallet),
+        { limit: 10 } // Reduced from 25 to 10
+      );
+      
+      console.log(`Found ${signatures.length} signatures, analyzing first 5`);
+      
+      // Analyze only first 5 transactions to save time
+      for (let i = 0; i < Math.min(signatures.length, 5); i++) {
+        try {
+          const signature = signatures[i];
+          
+          // OPTIMIZATION: Faster transaction fetch with shorter timeout
+          const txPromise = connection.getTransaction(signature.signature, {
+            maxSupportedTransactionVersion: 0
+          });
+          
+          const tx = await Promise.race([
+            txPromise,
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Transaction timeout')), 3000) // Reduced from 8000ms to 3000ms
+            )
+          ]);
 
-            if (tx && tx.meta && tx.meta.preBalances && tx.meta.postBalances) {
-              // Find wallets that received SOL from this funding wallet
-              const fundedWallets = findFundedWallets(tx, fundingWallet);
+          if (tx && tx.meta && tx.meta.preBalances && tx.meta.postBalances) {
+            // Find wallets that received SOL from this funding wallet
+            const fundedWallets = findFundedWallets(tx, fundingWallet);
+            
+            for (const fundedWallet of fundedWallets) {
+              // Skip if we already have this wallet
+              if (results.some(r => r.address === fundedWallet.address)) continue;
               
-              for (const fundedWallet of fundedWallets) {
-                // Skip if we already have this wallet
-                if (results.some(r => r.address === fundedWallet.address)) continue;
+              // OPTIMIZATION: Quick analysis with minimal depth
+              const walletData = await analyzeWalletForInsiderPatterns(connection, fundedWallet.address, 20); // Reduced from 50 to 20
+              
+              if (walletData) {
+                results.push(walletData);
                 
-                // Analyze the funded wallet
-                const walletData = await analyzeWalletForInsiderPatterns(connection, fundedWallet.address, 50);
-                
-                if (walletData) {
-                  results.push(walletData);
-                  
-                  // Stop if we have enough results
-                  if (results.length >= 20) break;
-                }
+                // Stop if we have enough results
+                if (results.length >= 10) break; // Reduced from 20 to 10
               }
-              
-              if (results.length >= 20) break;
             }
-
-            // OPTIMIZATION: Better rate limiting
-            await new Promise(resolve => setTimeout(resolve, 200)); // Increased from 100ms to 200ms
             
-          } catch (txError) {
-            console.warn('Transaction analysis failed:', txError.message);
-            continue;
+            if (results.length >= 10) break; // Reduced from 20 to 10
           }
+
+          // OPTIMIZATION: Minimal rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100)); // Reduced from 200ms to 100ms
+          
+        } catch (txError) {
+          console.warn('Transaction analysis failed:', txError.message);
+          continue;
         }
-        
-        if (results.length >= 20) break;
-        
-      } catch (fundingWalletError) {
-        console.warn('Funding wallet scan failed:', fundingWalletError.message);
-        continue;
       }
+      
+    } catch (fundingWalletError) {
+      console.warn('Funding wallet scan failed:', fundingWalletError.message);
     }
 
+    console.log(`Scan completed, found ${results.length} wallets`);
     return results;
     
   } catch (error) {
@@ -338,18 +343,26 @@ async function analyzeWalletForInsiderPatterns(connection, walletAddress, depth 
   try {
     const publicKey = new PublicKey(walletAddress);
     
-    // Get account info
-    const accountInfo = await connection.getAccountInfo(publicKey);
+    // OPTIMIZATION: Add timeout for account info fetch
+    const accountInfoPromise = connection.getAccountInfo(publicKey);
+    const accountInfo = await Promise.race([
+      accountInfoPromise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Account info timeout')), 2000)
+      )
+    ]);
+    
     if (!accountInfo) return null;
 
-    // Get transaction history with user-selectable depth
-    const signatures = await connection.getSignaturesForAddress(publicKey, { limit: depth });
+    // OPTIMIZATION: Reduce depth for faster analysis
+    const limitedDepth = Math.min(depth, 30); // Max 30 transactions for speed
+    const signatures = await connection.getSignaturesForAddress(publicKey, { limit: limitedDepth });
     
     // Get balance
     const balance = accountInfo.lamports / 1e9; // Convert lamports to SOL
     
-    // Analyze real token holdings
-    const tokenAnalysis = await analyzeTokenHoldings(connection, publicKey, signatures);
+    // OPTIMIZATION: Skip token analysis for speed
+    const tokenAnalysis = { tokenCount: 0, tokenAccounts: [] };
     
     // Check if wallet is a potential insider
     const insiderAnalysis = await checkInsiderCriteria(connection, publicKey, signatures);
@@ -368,7 +381,7 @@ async function analyzeWalletForInsiderPatterns(connection, walletAddress, depth 
       washTradeVolume: insiderAnalysis.washTradeVolume,
       totalProfit: insiderAnalysis.totalProfit,
       detectedPatterns: insiderAnalysis.patterns,
-      analysisDepth: depth
+      analysisDepth: limitedDepth
     };
 
   } catch (error) {
@@ -421,8 +434,8 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
     let totalProfit = 0;        // Total profit from trades
     let washTradeVolume = 0;    // Volume of quick trades (potential wash trading)
     
-    // OPTIMIZATION: Analyze fewer transactions for speed (max 50 instead of 100)
-    const maxTransactions = Math.min(signatures.length, 50);
+    // OPTIMIZATION: Analyze fewer transactions for speed (max 20 instead of 50)
+    const maxTransactions = Math.min(signatures.length, 20);
     
     // First, check if this wallet was funded by known insider wallets
     for (let i = 0; i < maxTransactions; i++) {
@@ -432,11 +445,11 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
           maxSupportedTransactionVersion: 0
         });
         
-        // 5 second timeout per transaction
+        // 3 second timeout per transaction (reduced from 5)
         const tx = await Promise.race([
           txPromise,
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Transaction timeout')), 5000)
+            setTimeout(() => reject(new Error('Transaction timeout')), 3000)
           )
         ]);
         
@@ -491,24 +504,20 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
             const timeDiff = Math.abs(signatures[i-1].blockTime - signatures[i].blockTime);
             const solChange = balanceChange / 1e9;
             
-            // If it's a profitable trade with longer holding time (>5 minutes)
-            if (solChange > 0 && timeDiff > 300) { // 5 minutes
-              // Calculate if it's a "good play" (4x+ profit)
-              // This is a simplified calculation - in reality you'd need to track entry/exit points
-              if (solChange > 0.1) { // Assuming minimum 0.1 SOL profit indicates good play
-                goodPlays++;
-              }
+            // Simplified good play detection for speed
+            if (solChange > 0.1 && timeDiff > 300) { // >0.1 SOL profit and >5min hold
+              goodPlays++;
             }
           }
         }
         
-        // OPTIMIZATION: Add small delay between requests to avoid rate limiting
+        // OPTIMIZATION: Add small delay to prevent rate limiting
         if (i % 5 === 0) { // Every 5th transaction
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
         
       } catch (txError) {
-        console.warn(`Transaction ${i} failed:`, txError.message);
+        console.warn('Transaction analysis failed:', txError.message);
         continue;
       }
     }
