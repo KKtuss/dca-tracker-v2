@@ -32,25 +32,22 @@ export default async function handler(req, res) {
       'Access-Control-Allow-Credentials': 'false',
       'Content-Type': 'application/json'
     });
-    res.end(JSON.stringify({
+    res.json({
       success: true,
       message: 'OPTIONS preflight successful',
       timestamp: new Date().toISOString(),
       method: 'OPTIONS',
       cors: 'enabled'
-    }));
+    });
     return;
   }
 
   // Set CORS headers for all other requests
-  res.writeHead(200, {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Origin, Accept',
-    'Access-Control-Max-Age': '86400',
-    'Access-Control-Allow-Credentials': 'false',
-    'Content-Type': 'application/json'
-  });
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  res.setHeader('Access-Control-Allow-Credentials', 'false');
 
   // Log request details for debugging
   console.log(`[${new Date().toISOString()}] ${req.method} request to /api/solana-scan`);
@@ -71,25 +68,25 @@ export default async function handler(req, res) {
       }
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
-      res.end(JSON.stringify({
+      res.json({
         success: false,
         error: 'Invalid JSON in request body',
         message: 'Request body must be valid JSON',
         parseError: parseError.message
-      }));
+      });
       return;
     }
   }
   
   // If still no body, return error
   if (!body) {
-    res.end(JSON.stringify({
+    res.json({
       success: false,
       error: 'Request body is missing',
       message: 'Please ensure Content-Type is application/json and body is valid JSON',
       receivedBody: req.body,
       contentType: req.headers['content-type']
-    }));
+    });
     return;
   }
 
@@ -99,7 +96,7 @@ export default async function handler(req, res) {
     // Handle test request
     if (ultraFastTest) {
       console.log('Ultra-fast test mode activated - returning instant results');
-      res.end(JSON.stringify({
+      res.json({
         success: true,
         data: [
           {
@@ -122,7 +119,19 @@ export default async function handler(req, res) {
         message: 'ULTRA-FAST TEST MODE: Instant results for testing',
         scanDepth: 25,
         performance: 'ULTRA-FAST TEST - Instant response, no blockchain calls'
-      }));
+      });
+      return;
+    }
+
+    // Handle health check request
+    if (body.healthCheck) {
+      console.log('Health check requested');
+      res.json({
+        success: true,
+        message: 'API is healthy',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0'
+      });
       return;
     }
 
@@ -130,49 +139,65 @@ export default async function handler(req, res) {
     if (body.autoDiscoveryTest) {
       console.log('Auto-discovery test mode activated - testing discovery logic');
       
-      // Return a mock discovery result to test the frontend
-      res.end(JSON.stringify({
-        success: true,
-        wallets: [
-          {
-            address: 'AUTO_DISCOVERY_TEST_WALLET_1',
-            balance: '0.8500',
-            transactions: 15,
-            tokens: 0,
-            isInsider: true,
-            insiderReason: 'AUTO-DISCOVERY TEST: Fresh wallet funded by Binance 2 with 1.2 SOL',
-            fundingSource: '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9',
-            fundingAmount: '1.2000',
-            quickTrades: 8,
-            goodPlays: 3,
-            washTradeVolume: '25.50',
-            totalProfit: '4.20',
-            detectedPatterns: ['Fresh Wallet', 'Binance 2 Funding', 'High Wash Trading', 'Hidden Good Plays'],
-            analysisDepth: 15
-          },
-          {
-            address: 'AUTO_DISCOVERY_TEST_WALLET_2',
-            balance: '1.7500',
-            transactions: 22,
-            tokens: 0,
-            isInsider: true,
-            insiderReason: 'AUTO-DISCOVERY TEST: Fresh wallet funded by Changenow with 2.1 SOL',
-            fundingSource: 'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t',
-            fundingAmount: '2.1000',
-            quickTrades: 12,
-            goodPlays: 5,
-            washTradeVolume: '45.80',
-            totalProfit: '8.90',
-            detectedPatterns: ['Fresh Wallet', 'Changenow Funding', 'High Wash Trading', 'Hidden Good Plays'],
-            analysisDepth: 22
-          }
-        ],
-        totalScanned: 2,
-        insidersFound: 2,
-        scanType: 'auto-discovery',
-        message: 'AUTO-DISCOVERY TEST MODE: Mock results for testing frontend functionality'
-      }));
-      return;
+      try {
+        // Return a mock discovery result to test the frontend
+        const testResponse = {
+          success: true,
+          wallets: [
+            {
+              address: 'AUTO_DISCOVERY_TEST_WALLET_1',
+              balance: '0.8500',
+              transactions: 15,
+              tokens: 0,
+              isInsider: true,
+              insiderReason: 'AUTO-DISCOVERY TEST: Fresh wallet funded by Binance 2 with 1.2 SOL',
+              fundingSource: '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9',
+              fundingAmount: '1.2000',
+              quickTrades: 8,
+              goodPlays: 3,
+              washTradeVolume: '25.50',
+              totalProfit: '4.20',
+              detectedPatterns: ['Fresh Wallet', 'Binance 2 Funding', 'High Wash Trading', 'Hidden Good Plays'],
+              analysisDepth: 15
+            },
+            {
+              address: 'AUTO_DISCOVERY_TEST_WALLET_2',
+              balance: '1.7500',
+              transactions: 22,
+              tokens: 0,
+              isInsider: true,
+              insiderReason: 'AUTO-DISCOVERY TEST: Fresh wallet funded by Changenow with 2.1 SOL',
+              fundingSource: 'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t',
+              fundingAmount: '2.1000',
+              quickTrades: 12,
+              goodPlays: 5,
+              washTradeVolume: '45.80',
+              totalProfit: '8.90',
+              detectedPatterns: ['Fresh Wallet', 'Changenow Funding', 'High Wash Trading', 'Hidden Good Plays'],
+              analysisDepth: 22
+            }
+          ],
+          totalScanned: 2,
+          insidersFound: 2,
+          scanType: 'auto-discovery',
+          message: 'AUTO-DISCOVERY TEST MODE: Mock results for testing frontend functionality'
+        };
+        
+        console.log('Sending test response:', testResponse);
+        console.log('Response headers being set:', res.getHeaders());
+        res.json(testResponse);
+        console.log('Test response sent successfully');
+        return;
+      } catch (testError) {
+        console.error('Error in auto-discovery test:', testError);
+        res.json({
+          success: false,
+          error: 'Test response generation failed',
+          message: 'Failed to generate test data',
+          details: testError.message
+        });
+        return;
+      }
     }
 
     // OPTIMIZATION: Limit scan depth to prevent timeouts
@@ -184,6 +209,7 @@ export default async function handler(req, res) {
     
     if (autoDiscoveryMode) {
       console.log(`AUTO-DISCOVERY MODE: Discovering fresh wallets from insider sources`);
+      console.log(`Auto-discovery parameters: maxWallets=${maxWalletsToDiscover}, scanDepth=${scanDepth}, rpcEndpoint=${rpcEndpoint}`);
       
       // Add timeout wrapper for auto-discovery process
       const autoDiscoveryPromise = (async () => {
@@ -192,6 +218,7 @@ export default async function handler(req, res) {
         console.log(`Discovered ${freshWallets.length} fresh wallets`);
         
         if (freshWallets.length === 0) {
+          console.log('No fresh wallets discovered - returning empty result');
           return {
             success: true,
             wallets: [],
@@ -218,6 +245,7 @@ export default async function handler(req, res) {
           console.log('- Discovered wallets don\'t meet insider criteria yet');
           console.log('- Need more transaction history');
           console.log('- Insider criteria too strict for fresh wallets');
+          console.log('Sample discovered wallet that failed criteria:', freshWallets[0]);
         }
         
         return {
@@ -238,7 +266,13 @@ export default async function handler(req, res) {
         )
       ]);
       
-      return res.status(200).json(result);
+      // Debug: Log what we're about to return
+      console.log('Auto-discovery result being returned:', result);
+      console.log('About to send response with status 200');
+      
+      res.status(200).json(result);
+      console.log('Auto-discovery response sent successfully');
+      return;
     }
     
     console.log(`Starting ULTRA-FAST scan with depth: ${limitedScanDepth}`);
@@ -268,13 +302,13 @@ export default async function handler(req, res) {
       )
     ]);
 
-    res.end(JSON.stringify({
+    res.json({
       success: true,
       data: results,
       message: `Found ${results.length} wallets with insider patterns`,
       scanDepth: limitedScanDepth,
       performance: 'ULTRA-AGGRESSIVE scan - limited to 50 transactions max, 8 second timeout'
-    }));
+    });
 
   } catch (error) {
     console.error('Backend scan error:', error);
@@ -293,12 +327,12 @@ export default async function handler(req, res) {
       }
     }
     
-    res.end(JSON.stringify({
+    res.json({
       success: false,
       error: errorMessage,
       message: 'Scan failed on backend',
       recommendation: recommendation
-    }));
+    });
   }
 }
 
@@ -957,4 +991,6 @@ async function processWalletBatch(connection, wallets, scanDepth) {
     return await Promise.all(batchPromises);
   }
 }
+
+
 
