@@ -94,7 +94,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { scanType, scanDepth = 50, rpcEndpoint, ultraFastTest, autoDiscoveryMode = false, maxWalletsToDiscover = 1000 } = body;
+    const { scanType, scanDepth = 50, rpcEndpoint, ultraFastTest, autoDiscoveryMode = false, maxWalletsToDiscover = 1000, walletAddress, batchWallets } = body;
 
     // Handle test request
     if (ultraFastTest) {
@@ -126,6 +126,62 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Handle auto-discovery test request
+    if (body.autoDiscoveryTest) {
+      console.log('Auto-discovery test mode activated - testing discovery logic');
+      
+      // Return a mock discovery result to test the frontend
+      res.end(JSON.stringify({
+        success: true,
+        wallets: [
+          {
+            address: 'AUTO_DISCOVERY_TEST_WALLET_1',
+            balance: '0.8500',
+            transactions: 15,
+            tokens: 0,
+            isInsider: true,
+            insiderReason: 'AUTO-DISCOVERY TEST: Fresh wallet funded by Binance 2 with 1.2 SOL',
+            fundingSource: '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9',
+            fundingAmount: '1.2000',
+            quickTrades: 8,
+            goodPlays: 3,
+            washTradeVolume: '25.50',
+            totalProfit: '4.20',
+            detectedPatterns: ['Fresh Wallet', 'Binance 2 Funding', 'High Wash Trading', 'Hidden Good Plays'],
+            analysisDepth: 15
+          },
+          {
+            address: 'AUTO_DISCOVERY_TEST_WALLET_2',
+            balance: '1.7500',
+            transactions: 22,
+            tokens: 0,
+            isInsider: true,
+            insiderReason: 'AUTO-DISCOVERY TEST: Fresh wallet funded by Changenow with 2.1 SOL',
+            fundingSource: 'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t',
+            fundingAmount: '2.1000',
+            quickTrades: 12,
+            goodPlays: 5,
+            washTradeVolume: '45.80',
+            totalProfit: '8.90',
+            detectedPatterns: ['Fresh Wallet', 'Changenow Funding', 'High Wash Trading', 'Hidden Good Plays'],
+            analysisDepth: 22
+          }
+        ],
+        totalScanned: 2,
+        insidersFound: 2,
+        scanType: 'auto-discovery',
+        message: 'AUTO-DISCOVERY TEST MODE: Mock results for testing frontend functionality'
+      }));
+      return;
+    }
+
+    // OPTIMIZATION: Limit scan depth to prevent timeouts
+    const limitedScanDepth = Math.min(scanDepth || 100, 50); // ULTRA-AGGRESSIVE: Max 50 transactions
+    
+    // Use Helius RPC or fallback to public
+    const endpoint = rpcEndpoint || 'https://api.mainnet-beta.solana.com';
+    const connection = new Connection(endpoint, 'confirmed');
+    
     if (autoDiscoveryMode) {
       console.log(`AUTO-DISCOVERY MODE: Discovering fresh wallets from insider sources`);
       
@@ -146,8 +202,23 @@ export default async function handler(req, res) {
           };
         }
         
+        // Debug: Log some details about discovered wallets
+        console.log('Sample discovered wallet:', freshWallets[0]);
+        console.log(`Total discovered wallets: ${freshWallets.length}`);
+        
         // Step 2: Process discovered wallets in batches
         const insiderWallets = await processWalletBatch(connection, freshWallets, limitedScanDepth);
+        console.log(`Processed wallets, found ${insiderWallets.length} insiders`);
+        
+        // Debug: Log details about processed wallets
+        if (insiderWallets.length > 0) {
+          console.log('Sample insider wallet:', insiderWallets[0]);
+        } else {
+          console.log('No insider wallets found. This could mean:');
+          console.log('- Discovered wallets don\'t meet insider criteria yet');
+          console.log('- Need more transaction history');
+          console.log('- Insider criteria too strict for fresh wallets');
+        }
         
         return {
           success: true,
@@ -169,13 +240,6 @@ export default async function handler(req, res) {
       
       return res.status(200).json(result);
     }
-
-    // OPTIMIZATION: Limit scan depth to prevent timeouts
-    const limitedScanDepth = Math.min(scanDepth || 100, 50); // ULTRA-AGGRESSIVE: Max 50 transactions
-    
-    // Use Helius RPC or fallback to public
-    const endpoint = rpcEndpoint || 'https://api.mainnet-beta.solana.com';
-    const connection = new Connection(endpoint, 'confirmed');
     
     console.log(`Starting ULTRA-FAST scan with depth: ${limitedScanDepth}`);
     console.log(`Using RPC endpoint: ${endpoint}`);
@@ -611,6 +675,21 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
       totalTrades >= 10            // ULTRA-AGGRESSIVE: Reduced from 20 to 10 total trades
     );
     
+    // Debug: Log criteria evaluation
+    console.log(`Wallet ${publicKey.toString()} insider criteria evaluation:`, {
+      fundingSource: !!fundingSource,
+      isFirstFunding,
+      fundingAmount: parseFloat(fundingAmount),
+      fundingAmountInRange: fundingAmount >= 0.5 && fundingAmount <= 2.5,
+      quickTrades,
+      quickTradesMet: quickTrades >= 3,
+      goodPlays,
+      goodPlaysMet: goodPlays >= 1,
+      totalTrades,
+      totalTradesMet: totalTrades >= 10,
+      isInsider
+    });
+    
     // Determine reason for classification
     let reason = '';
     if (isInsider) {
@@ -710,8 +789,11 @@ async function discoverFreshWallets(connection, maxWallets) {
         
         // Process transactions in smaller chunks with timeouts
         const chunkSize = 10; // Reduced from 20 to 10
+        console.log(`Processing ${signatures.length} signatures in chunks of ${chunkSize}`);
+        
         for (let i = 0; i < signatures.length && discoveredWallets.size < maxWallets; i += chunkSize) {
           const chunk = signatures.slice(i, i + chunkSize);
+          console.log(`Processing chunk ${Math.floor(i/chunkSize) + 1}/${Math.ceil(signatures.length/chunkSize)} (${chunk.length} signatures)`);
           
           const chunkPromises = chunk.map(async (sig) => {
             try {
@@ -738,8 +820,12 @@ async function discoverFreshWallets(connection, maxWallets) {
                       const postBalance = tx.meta.postBalances[1] || 0;
                       const transferAmount = (postBalance - preBalance) / 1e9; // Convert lamports to SOL
                       
+                      console.log(`Found SOL transfer: ${transferAmount.toFixed(4)} SOL to ${recipient.toString()} (pre: ${preBalance}, post: ${postBalance})`);
+                      
                       // Check if this matches our criteria: 0.5-2.5 SOL
                       if (transferAmount >= 0.5 && transferAmount <= 2.5) {
+                        console.log(`✅ Found qualifying transfer: ${transferAmount.toFixed(4)} SOL to ${recipient.toString()}`);
+                        
                         // Simplified check - assume it's fresh if we haven't seen it before
                         discoveredWallets.add({
                           address: recipient.toString(),
@@ -748,15 +834,25 @@ async function discoverFreshWallets(connection, maxWallets) {
                           discoveredFrom: sig.signature
                         });
                         
+                        console.log(`Added wallet ${recipient.toString()} to discovered set. Total: ${discoveredWallets.size}`);
+                        
                         // Stop if we have enough wallets
                         if (discoveredWallets.size >= maxWallets) {
                           console.log(`Reached max wallets limit: ${maxWallets}`);
                           return;
                         }
+                      } else {
+                        console.log(`❌ Transfer amount ${transferAmount.toFixed(4)} SOL outside 0.5-2.5 range`);
                       }
                     }
                   }
                 }
+              } else {
+                console.log(`Transaction ${sig.signature} missing required data:`, {
+                  hasTx: !!tx,
+                  hasMeta: !!(tx && tx.meta),
+                  hasInstructions: !!(tx && tx.transaction && tx.transaction.message && tx.transaction.message.instructions)
+                });
               }
             } catch (error) {
               console.log(`Error processing transaction ${sig.signature}:`, error.message);
@@ -792,7 +888,7 @@ async function processWalletBatch(connection, wallets, scanDepth) {
   
   for (let i = 0; i < wallets.length; i += batchSize) {
     const batch = wallets.slice(i, i + batchSize);
-    console.log(`Processing batch ${Math.floor(i/batchSize) + 1}: ${batch.length} wallets`);
+    console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(wallets.length/batchSize)}: ${batch.length} wallets`);
     
     try {
       // Process batch with timeout
@@ -803,7 +899,12 @@ async function processWalletBatch(connection, wallets, scanDepth) {
         )
       ]);
       
-      allResults.push(...batchResults.filter(result => result !== null));
+      console.log(`Batch ${Math.floor(i/batchSize) + 1} results:`, batchResults.length, 'wallets processed');
+      
+      const validResults = batchResults.filter(result => result !== null);
+      console.log(`Valid results from batch ${Math.floor(i/batchSize) + 1}:`, validResults.length);
+      
+      allResults.push(...validResults);
       
     } catch (error) {
       console.log(`Batch ${Math.floor(i/batchSize) + 1} failed:`, error.message);
@@ -821,6 +922,8 @@ async function processWalletBatch(connection, wallets, scanDepth) {
   async function processBatchInternal(batch) {
     const batchPromises = batch.map(async (walletInfo) => {
       try {
+        console.log(`Analyzing wallet ${walletInfo.address} (funded with ${walletInfo.fundingAmount} SOL from ${walletInfo.fundingSource})`);
+        
         // Add timeout to individual wallet analysis
         const analysisPromise = analyzeWalletForInsiderPatterns(connection, walletInfo.address, scanDepth);
         const analysis = await Promise.race([
@@ -834,6 +937,15 @@ async function processWalletBatch(connection, wallets, scanDepth) {
         if (analysis) {
           analysis.fundingSource = walletInfo.fundingSource;
           analysis.fundingAmount = walletInfo.fundingAmount;
+          console.log(`✅ Wallet ${walletInfo.address} analysis complete:`, {
+            isInsider: analysis.isInsider,
+            reason: analysis.insiderReason,
+            transactions: analysis.transactions,
+            quickTrades: analysis.quickTrades,
+            goodPlays: analysis.goodPlays
+          });
+        } else {
+          console.log(`❌ Wallet ${walletInfo.address} analysis returned null`);
         }
         return analysis;
       } catch (error) {
