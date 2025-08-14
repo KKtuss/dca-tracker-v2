@@ -522,7 +522,7 @@
     <div class="container">
         <div class="header">
             <h1>🔍 DCA TRACKER</h1>
-            <p>Track and analyze insider strategies onchain</p>
+                             <p>Track and analyze FRESH wallets funded by insider sources onchain</p>
             <div id="connectionStatus" style="margin-top: 15px; padding: 8px 16px; border-radius: 20px; font-size: 14px; display: inline-block; background: rgba(0, 0, 0, 0.5); border: 1px solid #333;">
                 🔄 Testing connections...
             </div>
@@ -538,20 +538,8 @@
         <!-- Scanner Tab -->
         <div id="scanner" class="tab-content active">
             <div class="card">
-                <h3>🔍 Wallet Scanner</h3>
-                <div id="demoModeIndicator" style="margin-bottom: 20px; padding: 12px; background: rgba(255, 170, 0, 0.1); border: 1px solid #ffaa00; border-radius: 8px; display: none;">
-                    <strong>🎭 Enhanced Demo Mode Active</strong><br>
-                    <small>Generating realistic insider trading patterns and wallet data. All functionality works without blockchain connection.</small>
-                    <br><br>
-                    <strong>💡 What This Means:</strong>
-                    <ul style="margin: 5px 0; padding-left: 20px;">
-                        <li>✅ All scanning features work perfectly</li>
-                        <li>✅ Generates realistic insider trading patterns</li>
-                        <li>✅ Shows actual trading behavior analysis</li>
-                        <li>✅ No blockchain connection required</li>
-                        <li>✅ Perfect for testing and demonstration</li>
-                    </ul>
-                </div>
+                                 <h3>🔍 Fresh Wallet Scanner</h3>
+
                 <div class="form-group">
                                          <label for="scanType">Scan Type:</label>
                      <select id="scanType">
@@ -582,9 +570,14 @@
                     <small class="form-text text-muted">ULTRA-AGGRESSIVE: Use 25-50 transactions for instant results. Higher depths may timeout.</small>
                 </div>
 
-                <button class="btn" onclick="startScan()">🚀 Start Scan</button>
-                <button class="btn btn-secondary" onclick="stopScan()">⏹️ Stop Scan</button>
-                <button class="btn btn-success" onclick="exportResults()">📊 Export Results</button>
+                                 <button class="btn" onclick="startScan()">🚀 Start Scan</button>
+                 <button class="btn btn-secondary" onclick="stopScan()">⏹️ Stop Scan</button>
+                 <button class="btn btn-success" onclick="exportResults()">📊 Export Results</button>
+                 
+                 <div class="alert alert-info" style="margin-top: 15px;">
+                     <strong>🎯 Fresh Wallet Focus:</strong> This scanner now specifically looks for wallets where the <strong>FIRST transaction</strong> was funding from Binance 2 or Changenow (0.5-2.5 SOL range). 
+                     Existing wallets that just received additional funds from these sources will be filtered out.
+                 </div>
 
                                  <div class="status-bar" id="statusBar">
                      Ready to scan. Select options and click "Start Scan".
@@ -662,7 +655,7 @@
                         <strong>🚀 Helius RPC Detected!</strong> You're connected to premium Solana blockchain data. 
                         Real wallet scanning and analysis is now available!
                     </div>
-                                                          <div id="demoModeStatus" style="margin-top: 10px; padding: 10px; background: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00; border-radius: 8px;">
+                                                          <div id="backendStatus" style="margin-top: 10px; padding: 10px; background: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00; border-radius: 8px;">
                           <strong>🚀 New Backend Solution:</strong> Vercel serverless API for real blockchain data!
                           <br><br>
                           <strong>✅ What This Gives You:</strong>
@@ -675,11 +668,11 @@
                           </ul>
                           <br>
                           <strong>🔧 Current Status:</strong>
-                          <div id="backendStatus" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 6px;">
+                          <div style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 6px;">
                               <span id="backendStatusText">🔄 Testing backend connection...</span>
                           </div>
                           <br>
-                                                     <strong>💡 If Backend Fails:</strong> The app will automatically use Enhanced Demo Mode with realistic insider patterns.
+                                                     <strong>💡 If Backend Fails:</strong> The app will show no data - either real blockchain data or nothing.
                            <br><br>
                            <strong>⚠️ CORS Issue?</strong> If you see "CORS error" messages, this is normal when opening HTML files locally. The backend works fine when deployed to a web server.
                            <br><br>
@@ -793,15 +786,13 @@
                         if (slot > 0) {
                             solanaConnection = testConnection;
                             
-                                                         // Check if it's Helius
-                             if (testEndpoint.includes('helius')) {
-                                 console.log('🚀 Using Helius RPC - Premium performance!');
-                                 showHeliusStatus(true);
-                                 updateConnectionStatus('✅ Helius RPC Connected - Blockchain Verified', 'connected');
-                             } else {
-                                 showHeliusStatus(false);
-                                 updateConnectionStatus('✅ Connected via fallback RPC', 'connected');
-                             }
+                                                                                      // Check if it's Helius
+                              if (testEndpoint.includes('helius')) {
+                                  console.log('🚀 Using Helius RPC - Premium performance!');
+                                  updateConnectionStatus('✅ Helius RPC Connected - Blockchain Verified', 'connected');
+                              } else {
+                                  updateConnectionStatus('✅ Connected via fallback RPC', 'connected');
+                              }
                             
                             console.log('✅ Solana connection established:', testEndpoint);
                             return true;
@@ -812,12 +803,12 @@
                     }
                 }
                 
-                console.log('❌ All RPC endpoints failed, will use enhanced demo mode');
-                updateConnectionStatus('⚠️ Using Enhanced Demo Mode', 'demo');
+                console.log('❌ All RPC endpoints failed - no blockchain connection available');
+                updateConnectionStatus('❌ No Blockchain Connection', 'error');
                 return false;
             } catch (error) {
                 console.error('Failed to initialize Solana connection:', error);
-                updateConnectionStatus('⚠️ Connection Error - Demo Mode', 'demo');
+                updateConnectionStatus('❌ Connection Error', 'error');
                 return false;
             }
         }
@@ -961,16 +952,17 @@
                 // Show detailed error in debug mode
                 const debugMode = document.getElementById('debugMode')?.checked;
                 if (debugMode) {
-                    showAlert(`Backend scan failed: ${error.message}. Check console for details. Falling back to demo mode.`, 'error');
+                    showAlert(`Backend scan failed: ${error.message}. Check console for details.`, 'error');
                 } else {
-                    showAlert(`Backend scan failed: ${error.message}. Falling back to demo mode.`, 'warning');
+                    showAlert(`Backend scan failed: ${error.message}.`, 'error');
                 }
                 
-                await enhancedDemoMode(scanType, scanDepth);
+                // No fallback to demo mode - either real data or nothing
+                updateStatus('❌ Scan failed - no data available', 'error');
             } finally {
                 isScanning = false;
                 hideProgress();
-                updateStatus('Scan completed', 'success');
+                updateStatus('Scan completed', 'error');
             }
         }
 
@@ -988,8 +980,7 @@
                 
                 // Check if Solana connection is available
                 if (!solanaConnection) {
-                    updateStatus('Solana connection not available, using enhanced demo mode...', 'warning');
-                    await enhancedRecentScan(depth);
+                    updateStatus('❌ Solana connection not available - no data available', 'error');
                     return;
                 }
                 
@@ -1010,145 +1001,76 @@
                     updateStatus(`Analyzing blockchain patterns... Step ${currentStep}/${totalSteps}`);
                     
                     try {
-                        // Generate realistic insider wallets with actual Solana address format
-                        const newWallets = generateRealisticInsiderWallets(Math.floor(Math.random() * 3) + 1);
-                        scanResults.push(...newWallets);
-                        
-                        await delay(200); // Reasonable rate limiting
+                        // This function now only works with real blockchain data
+                        // No demo mode fallback - either real data or nothing
+                        await delay(200); // Rate limiting
                     } catch (txError) {
-                        console.warn('Failed to generate wallet data:', txError);
+                        console.warn('Transaction analysis failed:', txError);
                         continue;
                     }
                 }
                 
-                if (scanResults.length === 0) {
-                    throw new Error('No valid wallets generated');
-                }
-                
-                displayResults();
+                // No demo mode - this function requires real blockchain data
+                updateStatus('❌ Recent transactions scan requires real blockchain data - no data available', 'error');
+                return;
                 
             } catch (error) {
                 console.error('Real blockchain scan failed:', error);
-                // Fallback to enhanced demo mode if blockchain scan fails
-                updateStatus('Blockchain scan failed, falling back to enhanced demo mode...', 'warning');
-                await enhancedRecentScan(depth);
+                // No fallback to demo mode - either real data or nothing
+                updateStatus('❌ Blockchain scan failed - no data available', 'error');
             }
         }
         
-        // Simulate recent transaction scan (fallback)
-        async function simulateRecentScan(depth) {
-            const totalSteps = depth / 10;
-            let currentStep = 0;
-            
-            for (let i = 0; i < totalSteps && isScanning; i++) {
-                currentStep++;
-                updateProgress((currentStep / totalSteps) * 100);
-                updateStatus(`Scanning recent transactions... Step ${currentStep}/${totalSteps}`);
-                
-                // Simulate finding wallets
-                const newWallets = generateMockWallets(Math.floor(Math.random() * 5) + 1);
-                scanResults.push(...newWallets);
-                
-                await delay(100);
-            }
-            
-            displayResults();
-        }
+
 
         // Real wallet analysis - Helius compatible version
         async function analyzeRealWallet(walletAddress) {
             try {
-                const publicKey = new solanaWeb3.PublicKey(walletAddress);
-                
-                // Check if Solana connection is available
                 if (!solanaConnection) {
-                    console.warn('Solana connection not available, cannot analyze real wallet');
-                    return null;
+                    throw new Error('Solana connection not available');
                 }
                 
-                // Try to get account info (this should work with Helius)
-                const accountInfo = await solanaConnection.getAccountInfo(publicKey);
+                updateStatus(`Analyzing wallet ${walletAddress.substring(0, 8)}...`, 'info');
                 
-                if (accountInfo) {
-                    const balance = accountInfo.lamports / solanaWeb3.LAMPORTS_PER_SOL;
-                    const transactionCount = Math.floor(Math.random() * 2000) + 200;
-                    const insiderScore = generateRealisticInsiderScore(walletAddress);
-                    
-                    return {
-                        address: walletAddress,
-                        balance: balance > 0 ? balance.toFixed(4) : (Math.random() * 5000 + 100).toFixed(4),
-                        transactions: transactionCount,
-                        tokens: Math.floor(Math.random() * 100) + 10,
-                        insiderScore: insiderScore.toFixed(1),
-                        isInsider: insiderScore > 70,
-                        patterns: Math.floor(insiderScore / 20) + 1,
-                        successRate: Math.max(60, Math.min(95, insiderScore + Math.random() * 20)).toFixed(1),
-                        avgHoldTime: Math.max(0.1, Math.min(48, 48 - (insiderScore / 2))).toFixed(1),
-                        totalProfit: (insiderScore > 70 ? 
-                            (Math.random() * 2000 + 500) : 
-                            (Math.random() * 500 - 200)).toFixed(2)
-                    };
+                // Get wallet balance
+                const publicKey = new PublicKey(walletAddress);
+                const balance = await solanaConnection.getBalance(publicKey);
+                const balanceSOL = balance / LAMPORTS_PER_SOL;
+                
+                // Get token accounts
+                const tokenAccounts = await solanaConnection.getParsedTokenAccountsByOwner(publicKey, {});
+                
+                // Get recent transactions
+                const signatures = await solanaConnection.getSignaturesForAddress(publicKey, { limit: 20 });
+                
+                const walletData = {
+                    address: walletAddress,
+                    balance: balanceSOL.toFixed(4),
+                    transactions: signatures.length,
+                    tokens: tokenAccounts.value.length,
+                    insiderScore: 'N/A',
+                    isInsider: false,
+                    patterns: 0,
+                    successRate: 'N/A',
+                    avgHoldTime: 'N/A',
+                    totalProfit: 'N/A',
+                    detectedPatterns: ['Real blockchain data - analysis pending']
+                };
+                
+                if (walletData.transactions > 0) {
+                    scanResults = [walletData];
+                    displayResults();
+                } else {
+                    throw new Error('Failed to analyze wallet');
                 }
             } catch (error) {
-                console.warn('Failed to analyze wallet:', walletAddress, error);
-                return null;
+                throw new Error('Wallet analysis failed: ' + error.message);
             }
         }
         
-        // Generate realistic insider score based on wallet characteristics
-        function generateRealisticInsiderScore(walletAddress) {
-            try {
-                let score = 50; // Base score
-                
-                // Analyze wallet address pattern for realistic scoring
-                const address = walletAddress.toString();
-                
-                // Check for patterns in the address that might indicate insider behavior
-                // This is a simplified version that generates realistic scores
-                
-                // Early entry pattern (high success rate)
-                if (Math.random() > 0.6) {
-                    score += 15;
-                }
-                
-                // Quick exit pattern
-                if (Math.random() > 0.5) {
-                    score += 20;
-                }
-                
-                // Volume manipulation
-                if (Math.random() > 0.7) {
-                    score += 10;
-                }
-                
-                // Token hopping
-                if (Math.random() > 0.6) {
-                    score += 15;
-                }
-                
-                // Cap the score
-                return Math.min(100, Math.max(0, score));
-                
-            } catch (error) {
-                console.warn('Failed to generate insider score:', error);
-                return 50; // Default score
-            }
-        }
+
         
-        // Simulate single wallet scan (fallback)
-        async function simulateWalletScan(wallet, depth) {
-            updateStatus(`Analyzing wallet: ${wallet.substring(0, 8)}...`);
-            
-            // Simulate analysis time
-            for (let i = 0; i < 10 && isScanning; i++) {
-                updateProgress((i / 10) * 100);
-                await delay(200);
-            }
-            
-            const walletData = generateMockWallet(wallet);
-            scanResults = [walletData];
-            displayResults();
-        }
+
 
         // Real batch wallet scanning
         async function scanBatchWallets(wallets, depth) {
@@ -1197,214 +1119,15 @@
             }
         }
         
-        // Enhanced demo mode with realistic data and wallet validation
-        async function enhancedDemoMode(scanType, depth) {
-            updateStatus('Enhanced Demo Mode: Generating realistic insider wallet data', 'info');
-            
-            if (scanType === 'recent') {
-                await scanRecentTransactions(depth);
-            } else if (scanType === 'specific') {
-                const wallet = document.getElementById('walletAddress').value.trim();
-                await enhancedWalletScan(wallet, depth);
-            } else if (scanType === 'batch') {
-                const wallets = document.getElementById('batchWallets').value.trim().split('\n').filter(w => w.trim());
-                await enhancedBatchScan(wallets, depth);
-            }
-        }
-        
-        // Enhanced recent scan with realistic patterns
-        async function enhancedRecentScan(depth) {
-            const totalSteps = Math.min(depth / 50, 20); // More realistic step count
-            let currentStep = 0;
-            
-            for (let i = 0; i < totalSteps && isScanning; i++) {
-                currentStep++;
-                updateProgress((currentStep / totalSteps) * 100);
-                updateStatus(`Enhanced Demo: Analyzing wallet patterns... Step ${currentStep}/${totalSteps}`);
-                
-                // Generate realistic insider wallets with patterns
-                const newWallets = generateRealisticInsiderWallets(Math.floor(Math.random() * 3) + 1);
-                scanResults.push(...newWallets);
-                
-                await delay(150);
-            }
-            
-            displayResults();
-        }
-        
-        // Enhanced wallet scan with realistic data
-        async function enhancedWalletScan(wallet, depth) {
-            updateStatus(`Enhanced Demo: Analyzing wallet ${wallet.substring(0, 8)}...`);
-            
-            // Simulate analysis time
-            for (let i = 0; i < 8 && isScanning; i++) {
-                updateProgress((i / 8) * 100);
-                await delay(250);
-            }
-            
-            const walletData = generateRealisticWallet(wallet);
-            scanResults = [walletData];
-            displayResults();
-        }
-        
-        // Enhanced batch scan
-        async function enhancedBatchScan(wallets, depth) {
-            const totalWallets = wallets.length;
-            
-            for (let i = 0; i < totalWallets && isScanning; i++) {
-                const wallet = wallets[i];
-                updateProgress((i / totalWallets) * 100);
-                updateStatus(`Enhanced Demo: Analyzing wallet ${i + 1}/${totalWallets}: ${wallet.substring(0, 8)}...`);
-                
-                const walletData = generateRealisticWallet(wallet);
-                scanResults.push(walletData);
-                
-                await delay(200);
-            }
-            
-            displayResults();
-        }
-        
-        // Generate realistic insider wallets with actual patterns
-        function generateRealisticInsiderWallets(count) {
-            const wallets = [];
-            for (let i = 0; i < count; i++) {
-                const address = generateRealisticSolanaAddress();
-                wallets.push(generateRealisticWallet(address));
-            }
-            return wallets;
-        }
-        
-        // Generate realistic Solana wallet address
-        function generateRealisticSolanaAddress() {
-            const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-            let result = '';
-            for (let i = 0; i < 44; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
-        
-        // Generate realistic wallet with insider patterns
-        function generateRealisticWallet(address) {
-            // Generate realistic insider score based on patterns
-            const baseScore = Math.random() * 40 + 30; // Base 30-70
-            
-            // Add insider patterns
-            let insiderScore = baseScore;
-            const patterns = [];
-            
-            // Early entry pattern (high success rate)
-            if (Math.random() > 0.6) {
-                insiderScore += 15;
-                patterns.push('Early Entry');
-            }
-            
-            // Quick exit pattern
-            if (Math.random() > 0.5) {
-                insiderScore += 20;
-                patterns.push('Quick Exit');
-            }
-            
-            // Volume manipulation
-            if (Math.random() > 0.7) {
-                insiderScore += 10;
-                patterns.push('Volume Spike');
-            }
-            
-            // Token hopping
-            if (Math.random() > 0.6) {
-                insiderScore += 15;
-                patterns.push('Token Hopping');
-            }
-            
-            // Cap the score
-            insiderScore = Math.min(100, Math.max(0, insiderScore));
-            const isInsider = insiderScore > 70;
-            
-            // Generate realistic metrics based on insider score
-            const successRate = Math.max(60, Math.min(95, insiderScore + Math.random() * 20));
-            const avgHoldTime = Math.max(0.1, Math.min(48, 48 - (insiderScore / 2)));
-            const totalProfit = insiderScore > 70 ? 
-                (Math.random() * 2000 + 500) : 
-                (Math.random() * 500 - 200);
-            
-            return {
-                address: address,
-                balance: (Math.random() * 5000 + 100).toFixed(4),
-                transactions: Math.floor(Math.random() * 2000) + 200,
-                tokens: Math.floor(Math.random() * 100) + 10,
-                insiderScore: insiderScore.toFixed(1),
-                isInsider: isInsider,
-                patterns: patterns.length,
-                successRate: successRate.toFixed(1),
-                avgHoldTime: avgHoldTime.toFixed(1),
-                totalProfit: totalProfit.toFixed(2),
-                detectedPatterns: patterns
-            };
-        }
-        
-        // Fallback to demo data when real scanning fails (legacy)
-        async function fallbackToDemoData(scanType, depth) {
-            updateStatus('Using demo data due to blockchain connection issues', 'warning');
-            
-            if (scanType === 'recent') {
-                await simulateRecentScan(depth);
-            } else if (scanType === 'specific') {
-                const wallet = document.getElementById('walletAddress').value.trim();
-                await simulateWalletScan(wallet, depth);
-            } else if (scanType === 'batch') {
-                const wallets = document.getElementById('batchWallets').value.trim().split('\n').filter(w => w.trim());
-                await simulateBatchScan(wallets, depth);
-            }
-        }
-        
-        // Simulate batch wallet scan (fallback)
-        async function simulateBatchScan(wallets, depth) {
-            const totalWallets = wallets.length;
-            
-            for (let i = 0; i < totalWallets && isScanning; i++) {
-                const wallet = wallets[i];
-                updateProgress((i / totalWallets) * 100);
-                updateStatus(`Analyzing wallet ${i + 1}/${totalWallets}: ${wallet.substring(0, 8)}...`);
-                
-                const walletData = generateMockWallet(wallet);
-                scanResults.push(walletData);
-                
-                await delay(300);
-            }
-            
-            displayResults();
-        }
 
-        // Generate mock wallet data
-        function generateMockWallet(address) {
-            const insiderScore = Math.random() * 100;
-            const isInsider = insiderScore > 70;
-            
-            return {
-                address: address,
-                balance: (Math.random() * 1000).toFixed(2),
-                transactions: Math.floor(Math.random() * 1000) + 100,
-                tokens: Math.floor(Math.random() * 50) + 5,
-                insiderScore: insiderScore.toFixed(1),
-                isInsider: isInsider,
-                patterns: Math.floor(Math.random() * 10) + 1,
-                successRate: (Math.random() * 100).toFixed(1),
-                avgHoldTime: (Math.random() * 24).toFixed(1),
-                totalProfit: (Math.random() * 1000 - 100).toFixed(2)
-            };
-        }
+        
 
-        // Generate multiple mock wallets
-        function generateMockWallets(count) {
-            const wallets = [];
-            for (let i = 0; i < count; i++) {
-                const address = 'So' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-                wallets.push(generateMockWallet(address));
-            }
-            return wallets;
-        }
+        
+
+        
+
+        
+
 
         // Display scan results
         function displayResults() {
@@ -1462,11 +1185,11 @@
                                 <strong>Analysis:</strong> ${wallet.insiderReason}
                             </div>` : ''
                         }
-                        ${wallet.fundingSource ? 
-                            `<div class="funding-info" style="margin-top: 5px; font-size: 11px; color: #00ffff;">
-                                <strong>Funding:</strong> ${wallet.fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'} (${wallet.fundingAmount} SOL)
-                            </div>` : ''
-                        }
+                                                 ${wallet.fundingSource ? 
+                             `<div class="funding-info" style="margin-top: 5px; font-size: 11px; color: #00ffff;">
+                                 <strong>🎯 FRESH WALLET:</strong> ${wallet.fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'} (${wallet.fundingAmount} SOL) - FIRST funding transaction
+                             </div>` : ''
+                         }
                         ${wallet.detectedPatterns && wallet.detectedPatterns.length > 0 ? 
                             `<div style="margin-top: 5px; font-size: 12px; color: #888;">
                                 <strong>Patterns:</strong> ${wallet.detectedPatterns.join(', ')}
@@ -1489,14 +1212,14 @@
                 return;
             }
             
-            // Create CSV content
-            let csv = 'Address,Balance,Transactions,Tokens,Is Insider,Funding Source,Funding Amount,Quick Trades,Good Plays,Total Profit,Analysis\n';
-            
-            storedWallets.forEach(wallet => {
-                const fundingSource = wallet.fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 
-                                    wallet.fundingSource === 'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t' ? 'Changenow' : 'None';
-                csv += `${wallet.address},${wallet.balance},${wallet.transactions},${wallet.tokens},${wallet.isInsider ? 'YES' : 'NO'},${fundingSource},${wallet.fundingAmount || '0.0000'},${wallet.quickTrades || 0},${wallet.goodPlays || 0},${wallet.totalProfit || '0.00'},${wallet.insiderReason || 'N/A'}\n`;
-            });
+                         // Create CSV content
+             let csv = 'Address,Balance,Transactions,Tokens,Is Insider,Funding Source,Funding Amount,Quick Trades,Good Plays,Total Profit,Analysis\n';
+             
+             storedWallets.forEach(wallet => {
+                 const fundingSource = wallet.fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2 (FRESH)' : 
+                                     wallet.fundingSource === 'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t' ? 'Changenow (FRESH)' : 'None';
+                 csv += `${wallet.address},${wallet.balance},${wallet.transactions},${wallet.tokens},${wallet.isInsider ? 'YES' : 'NO'},${fundingSource},${wallet.fundingAmount || '0.0000'},${wallet.quickTrades || 0},${wallet.goodPlays || 0},${wallet.totalProfit || '0.00'},${wallet.insiderReason || 'N/A'}\n`;
+             });
             
             // Download file
             const blob = new Blob([csv], { type: 'text/csv' });
@@ -1681,14 +1404,7 @@
             const now = new Date();
             const timeStr = now.toLocaleTimeString();
             
-            // Simulate finding new activity
-            if (Math.random() > 0.7) {
-                const newWallet = generateMockWallet('So' + Math.random().toString(36).substring(2, 15));
-                if (newWallet.isInsider) {
-                    addMonitorAlert(`🚨 New high-risk wallet detected at ${timeStr}: ${newWallet.address.substring(0, 8)}... (Score: ${newWallet.insiderScore}%)`);
-                }
-            }
-            
+            // No demo mode - only real blockchain data
             updateMonitorStatus(`Last check: ${timeStr} | Monitoring active...`, 'info');
         }
 
@@ -1819,33 +1535,17 @@
         
         function updateConnectionStatus(message, status) {
             const statusDiv = document.getElementById('connectionStatus');
-            const demoIndicator = document.getElementById('demoModeIndicator');
             
             if (statusDiv) {
                 statusDiv.textContent = message;
                 
                 // Update styling based on status
-                statusDiv.style.borderColor = status === 'connected' ? '#00ff00' : 
-                                            status === 'demo' ? '#ffaa00' : '#00ffff';
-                statusDiv.style.color = status === 'connected' ? '#00ff00' : 
-                                       status === 'demo' ? '#ffaa00' : '#00ffff';
-            }
-            
-            // Show/hide demo mode indicator
-            if (demoIndicator) {
-                demoIndicator.style.display = status === 'demo' ? 'block' : 'none';
+                statusDiv.style.borderColor = status === 'connected' ? '#00ff00' : '#00ffff';
+                statusDiv.style.color = status === 'connected' ? '#00ff00' : '#00ffff';
             }
         }
         
-        function showHeliusStatus(isHelius) {
-            const heliusDiv = document.getElementById('heliusStatus');
-            const demoDiv = document.getElementById('demoModeStatus');
-            
-            if (heliusDiv && demoDiv) {
-                heliusDiv.style.display = isHelius ? 'block' : 'none';
-                demoDiv.style.display = isHelius ? 'none' : 'block';
-            }
-        }
+
 
         function showProgress() {
             document.getElementById('progressBar').style.display = 'block';
@@ -1996,11 +1696,11 @@ async function testBackendConnection() {
                 if (backendTest) {
                     updateStatus('✅ Backend API is reachable! Ready for real blockchain scanning.', 'success');
                 } else {
-                    updateStatus('⚠️ Backend API not reachable. Will use Enhanced Demo Mode.', 'warning');
+                    updateStatus('❌ Backend API not reachable - no data available', 'error');
                 }
             } catch (error) {
                 console.log('Backend test failed:', error);
-                updateStatus('⚠️ Backend connection failed. Will use Enhanced Demo Mode.', 'warning');
+                updateStatus('❌ Backend connection failed - no data available', 'error');
             }
             
             // Try to initialize Solana connection
@@ -2013,13 +1713,13 @@ async function testBackendConnection() {
                      updateStatus('✅ Connected to Helius RPC! Ready to scan with blockchain-verified data.', 'success');
                      updateConnectionStatus('✅ Helius RPC Connected - Blockchain Verified', 'connected');
                  } else {
-                     updateStatus('⚠️ Blockchain connection failed. Using Enhanced Demo Mode with realistic insider patterns.', 'warning');
-                     updateConnectionStatus('⚠️ Demo Mode Active', 'demo');
+                     updateStatus('❌ Blockchain connection failed - no data available', 'error');
+                     updateConnectionStatus('❌ No Blockchain Connection', 'error');
                  }
              } catch (error) {
-                 console.log('Initialization error, using enhanced demo mode:', error);
-                 updateStatus('⚠️ Connection error. Using Enhanced Demo Mode with realistic insider patterns.', 'warning');
-                 updateConnectionStatus('⚠️ Demo Mode Active', 'demo');
+                 console.log('Initialization error:', error);
+                 updateStatus('❌ Connection error - no data available', 'error');
+                 updateConnectionStatus('❌ Connection Failed', 'error');
              }
          });
 
