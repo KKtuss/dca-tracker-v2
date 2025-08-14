@@ -5,7 +5,7 @@
       "maxDuration": 10
     },
     "api/solana-scan.js": {
-      "maxDuration": 20
+      "maxDuration": 10
     },
     "api/test-simple.js": {
       "maxDuration": 10

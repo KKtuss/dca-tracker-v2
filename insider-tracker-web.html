@@ -573,13 +573,13 @@
 
                 <!-- Scan Depth Selection -->
                 <div class="form-group">
-                  <label for="scanDepth">Scan Depth:</label>
-                  <select id="scanDepth" class="form-control">
-                    <option value="50">50 transactions (Ultra-fast)</option>
-                    <option value="100" selected>100 transactions (Fast)</option>
-                    <option value="200">200 transactions (Standard)</option>
-                  </select>
-                  <small class="form-text text-muted">Performance Tip: Use 50-100 transactions for fastest results. Higher depths may timeout.</small>
+                    <label for="scanDepth">Scan Depth:</label>
+                    <select id="scanDepth" class="form-control">
+                        <option value="25">25 transactions (Instant)</option>
+                        <option value="50" selected>50 transactions (Ultra-fast)</option>
+                        <option value="100">100 transactions (Fast)</option>
+                    </select>
+                    <small class="form-text text-muted">ULTRA-AGGRESSIVE: Use 25-50 transactions for instant results. Higher depths may timeout.</small>
                 </div>
 
                 <button class="btn" onclick="startScan()">🚀 Start Scan</button>
@@ -729,6 +729,7 @@
                             <button onclick="testCorsEndpoint()" class="btn btn-secondary">Test CORS Endpoint</button>
                     <button onclick="testRpcEndpoint()" class="btn btn-secondary">Test RPC Endpoint</button>
                     <button onclick="testDebugCors()" class="btn btn-secondary">Debug CORS</button>
+                    <button onclick="testUltraFastMode()" class="btn btn-primary">Test Ultra-Fast Mode</button>
 
                 <div class="alert alert-warning" style="margin-top: 20px;">
                     <strong>🔧 Troubleshooting Guide:</strong>
@@ -736,6 +737,7 @@
                         <li><strong>Test CORS Endpoint:</strong> Click to verify backend connectivity</li>
                         <li><strong>Test RPC Endpoint:</strong> Verify your Helius API key is working</li>
                         <li><strong>Debug CORS:</strong> Get detailed backend response information</li>
+                        <li><strong>Test Ultra-Fast Mode:</strong> Test instant backend response (no blockchain calls)</li>
                         <li><strong>Current Issues:</strong> CORS errors, Gateway timeouts, Backend connectivity</li>
                     </ul>
                     <small>💡 <strong>Tip:</strong> Make sure your Helius API key is valid and not expired. The current key in the input field may need to be updated.</small>
@@ -902,7 +904,7 @@
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
                     
-                    updateStatus('Analyzing blockchain data... This may take 10-20 seconds for optimized scans.', 'info');
+                    updateStatus('Analyzing blockchain data... This may take 5-10 seconds for ULTRA-AGGRESSIVE scans.', 'info'); // Updated
                     
                     const response = await fetch('https://dca-tracker-v2.vercel.app/api/solana-scan', {
                         method: 'POST',
@@ -945,7 +947,7 @@
                     });
                     
                     if (fetchError.name === 'AbortError') {
-                        throw new Error('Request timed out after 60 seconds. Try reducing scan depth to 50-100 transactions for faster results.');
+                        throw new Error('Request timed out after 60 seconds. Try reducing scan depth to 25-50 transactions for instant results.'); // Updated
                     }
                     if (fetchError.message.includes('CORS') || fetchError.message.includes('Failed to fetch')) {
                         throw new Error('CORS error: Backend not accessible from browser. This is a common issue with local HTML files.');
@@ -2197,6 +2199,53 @@ async function testBackendConnection() {
                 console.error('Debug CORS endpoint test error:', error);
                 showAlert(`❌ Debug CORS endpoint test error: ${error.message}`, 'error');
                 updateStatus('Debug CORS endpoint failed', 'error');
+            }
+        }
+
+        // Test ultra-fast mode
+        async function testUltraFastMode() {
+            const backendUrl = 'https://dca-tracker-v2.vercel.app';
+            
+            try {
+                updateStatus('🧪 Testing Ultra-Fast Mode...', 'info');
+                
+                const response = await fetch(`${backendUrl}/api/solana-scan`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        ultraFastTest: true,
+                        scanType: 'recent',
+                        scanDepth: 25
+                    }),
+                    signal: AbortSignal.timeout(5000) // 5 second timeout for ultra-fast test
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Ultra-fast test successful:', data);
+                    
+                    if (data.success && data.data && data.data.length > 0) {
+                        updateStatus(`✅ Ultra-Fast Mode Working! Found ${data.data.length} test wallets in ${data.performance}`, 'success');
+                        
+                        // Display the test results
+                        scanResults = data.data;
+                        displayResults();
+                        
+                        showAlert('Ultra-Fast Mode Test Successful! This confirms the backend is working and can return instant results.', 'success');
+                    } else {
+                        throw new Error('Ultra-fast test returned no data');
+                    }
+                } else {
+                    const errorText = await response.text();
+                    console.error('Ultra-fast test failed with status:', response.status, errorText);
+                    throw new Error(`Backend error: ${response.status} - ${errorText}`);
+                }
+            } catch (error) {
+                console.error('Ultra-fast test error:', error);
+                updateStatus(`❌ Ultra-Fast Mode Test Failed: ${error.message}`, 'error');
+                showAlert(`Ultra-Fast Mode Test Failed: ${error.message}`, 'error');
             }
         }
     </script>
