@@ -156,7 +156,7 @@ async function scanRecentTransactions(connection, depth) {
           
           for (const wallet of wallets) {
             const walletData = await analyzeWalletForInsiderPatterns(connection, wallet.toString());
-            if (walletData && walletData.insiderScore > 60) {
+            if (walletData && walletData.isInsider) { // Changed to check isInsider
               results.push(walletData);
             }
           }
@@ -182,7 +182,7 @@ async function scanRecentTransactions(connection, depth) {
 // Scan specific wallet
 async function scanSpecificWallet(connection, walletAddress, depth) {
   try {
-    const walletData = await analyzeWalletForInsiderPatterns(connection, walletAddress);
+    const walletData = await analyzeWalletForInsiderPatterns(connection, walletAddress, depth);
     return walletData ? [walletData] : [];
   } catch (error) {
     console.error('Specific wallet scan failed:', error);
@@ -196,7 +196,7 @@ async function scanBatchWallets(connection, wallets, depth) {
   
   for (const wallet of wallets) {
     try {
-      const walletData = await analyzeWalletForInsiderPatterns(connection, wallet);
+      const walletData = await analyzeWalletForInsiderPatterns(connection, wallet, depth);
       if (walletData) {
         results.push(walletData);
       }
@@ -214,7 +214,7 @@ async function scanBatchWallets(connection, wallets, depth) {
 }
 
 // Analyze wallet for insider patterns
-async function analyzeWalletForInsiderPatterns(connection, walletAddress) {
+async function analyzeWalletForInsiderPatterns(connection, walletAddress, depth = 100) {
   try {
     const publicKey = new PublicKey(walletAddress);
     
@@ -222,31 +222,32 @@ async function analyzeWalletForInsiderPatterns(connection, walletAddress) {
     const accountInfo = await connection.getAccountInfo(publicKey);
     if (!accountInfo) return null;
 
-    // Get transaction history
-    const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 50 });
-    
-    // Calculate insider score based on real data
-    const insiderScore = await calculateInsiderScore(connection, publicKey, signatures);
+    // Get transaction history with user-selectable depth
+    const signatures = await connection.getSignaturesForAddress(publicKey, { limit: depth });
     
     // Get balance
     const balance = accountInfo.lamports / 1e9; // Convert lamports to SOL
     
-    // Analyze real token holdings and transaction patterns
+    // Analyze real token holdings
     const tokenAnalysis = await analyzeTokenHoldings(connection, publicKey, signatures);
-    const profitAnalysis = await analyzeProfitPatterns(connection, publicKey, signatures);
+    
+    // Check if wallet is a potential insider
+    const insiderAnalysis = await checkInsiderCriteria(connection, publicKey, signatures);
     
     return {
       address: walletAddress,
       balance: balance.toFixed(4),
       transactions: signatures.length,
       tokens: tokenAnalysis.tokenCount,
-      insiderScore: insiderScore.toFixed(1),
-      isInsider: insiderScore > 70,
-      patterns: Math.floor(insiderScore / 20) + 1,
-      successRate: profitAnalysis.successRate.toFixed(1),
-      avgHoldTime: profitAnalysis.avgHoldTime.toFixed(1),
-      totalProfit: profitAnalysis.totalProfit.toFixed(2),
-      detectedPatterns: getDetectedPatterns(insiderScore)
+      isInsider: insiderAnalysis.isInsider,
+      insiderReason: insiderAnalysis.reason,
+      quickTrades: insiderAnalysis.quickTrades,
+      earlyPlays: insiderAnalysis.earlyPlays,
+      successRate: insiderAnalysis.successRate.toFixed(1),
+      washTradeVolume: insiderAnalysis.washTradeVolume,
+      totalProfit: insiderAnalysis.totalProfit.toFixed(2),
+      detectedPatterns: insiderAnalysis.patterns,
+      analysisDepth: depth
     };
 
   } catch (error) {
@@ -278,131 +279,62 @@ async function analyzeTokenHoldings(connection, publicKey, signatures) {
   }
 }
 
-// Analyze real profit patterns and hold times
-async function analyzeProfitPatterns(connection, publicKey, signatures) {
+
+
+// Check if wallet meets insider criteria
+async function checkInsiderCriteria(connection, publicKey, signatures) {
   try {
-    let totalProfit = 0;
-    let successfulTrades = 0;
-    let totalTrades = 0;
-    let holdTimes = [];
+    let quickTrades = 0;        // Trades with <1min hold time
+    let earlyPlays = 0;         // Successful early entries (profitable trades)
+    let totalTrades = 0;        // Total analyzed trades
+    let successfulTrades = 0;   // Profitable trades
+    let totalProfit = 0;        // Total profit from trades
+    let washTradeVolume = 0;    // Volume of quick trades (potential wash trading)
     
-    // Analyze recent transactions for profit/loss patterns
-    for (let i = 0; i < Math.min(signatures.length, 20); i++) {
+    // Analyze recent transactions for insider patterns
+    for (let i = 0; i < Math.min(signatures.length, 100); i++) { // Default to 100, can be increased
       try {
         const tx = await connection.getTransaction(signatures[i].signature, {
           maxSupportedTransactionVersion: 0
         });
         
         if (tx && tx.meta && tx.meta.preBalances && tx.meta.postBalances) {
+          totalTrades++;
+          
+          // Calculate profit/loss
           const preBalance = tx.meta.preBalances[0];
           const postBalance = tx.meta.postBalances[0];
           const balanceChange = postBalance - preBalance;
           
           if (balanceChange > 0) {
             successfulTrades++;
-            totalProfit += balanceChange / 1e9; // Convert lamports to SOL
+            totalProfit += balanceChange / 1e9;
           }
           
-          totalTrades++;
-          
-          // Calculate hold time if we have multiple transactions
-          if (i > 0 && signatures[i-1].blockTime && signatures[i].blockTime) {
-            const holdTime = Math.abs(signatures[i-1].blockTime - signatures[i].blockTime) / 3600; // Hours
-            if (holdTime > 0 && holdTime < 168) { // Less than 1 week
-              holdTimes.push(holdTime);
-            }
-          }
-        }
-        
-      } catch (txError) {
-        continue;
-      }
-    }
-    
-    // Calculate success rate
-    const successRate = totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 60;
-    
-    // Calculate average hold time
-    const avgHoldTime = holdTimes.length > 0 ? 
-      holdTimes.reduce((a, b) => a + b, 0) / holdTimes.length : 
-      Math.max(0.1, Math.min(48, 48 - (totalTrades / 2)));
-    
-    return {
-      successRate: Math.max(60, Math.min(95, successRate)),
-      avgHoldTime: Math.max(0.1, Math.min(48, avgHoldTime)),
-      totalProfit: totalProfit > 0 ? totalProfit : (Math.random() * 100 - 50), // Fallback if no profit data
-      successfulTrades,
-      totalTrades
-    };
-    
-  } catch (error) {
-    console.warn('Profit analysis failed:', error.message);
-    return {
-      successRate: 65,
-      avgHoldTime: 24,
-      totalProfit: 0,
-      successfulTrades: 0,
-      totalTrades: 0
-    };
-  }
-}
-
-// Calculate insider score based on real transaction data
-async function calculateInsiderScore(connection, publicKey, signatures) {
-  let score = 50; // Base score
-  
-  try {
-    // Analyze recent transactions for patterns
-    for (let i = 0; i < Math.min(signatures.length, 15); i++) {
-      try {
-        const tx = await connection.getTransaction(signatures[i].signature, {
-          maxSupportedTransactionVersion: 0
-        });
-        
-        if (tx && tx.meta) {
-          // Check for early entry (high fee might indicate priority)
-          if (tx.meta.fee > 5000) {
-            score += 8;
-          }
-          
-          // Check for quick exit (short time between transactions)
+          // Check for quick flipping (hold time <1min) - this is wash trading
           if (i > 0 && signatures[i-1].blockTime && signatures[i].blockTime) {
             const timeDiff = Math.abs(signatures[i-1].blockTime - signatures[i].blockTime);
-            if (timeDiff < 1800) { // Less than 30 minutes
-              score += 15;
-            } else if (timeDiff < 3600) { // Less than 1 hour
-              score += 10;
+            
+            if (timeDiff <= 60) { // 1 minute or less
+              quickTrades++;
+              // Add to wash trade volume (absolute value since wash trades can be losses)
+              washTradeVolume += Math.abs(balanceChange) / 1e9;
             }
           }
           
-          // Check for volume manipulation
-          if (tx.meta.postBalances && tx.meta.preBalances) {
-            const balanceChange = Math.abs(tx.meta.postBalances[0] - tx.meta.preBalances[0]);
-            if (balanceChange > 1e9) { // More than 1 SOL
-              score += 12;
-            } else if (balanceChange > 0.1e9) { // More than 0.1 SOL
-              score += 6;
-            }
+          // Check for early entry indicators (high fee + profitable = early play)
+          if (tx.meta.fee > 10000 && balanceChange > 0) { // High fee + profit indicates early entry
+            earlyPlays++;
           }
           
           // Check for token program interactions (indicates token trading)
           if (tx.transaction.message.accountKeys.some(key => 
             key.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
           )) {
-            score += 5;
-          }
-          
-          // Check for DEX interactions (common addresses)
-          const dexAddresses = [
-            '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', // Orca
-            '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8', // Raydium
-            'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc'   // Whirlpool
-          ];
-          
-          if (tx.transaction.message.accountKeys.some(key => 
-            dexAddresses.includes(key.toString())
-          )) {
-            score += 8;
+            // This is a token trade - if profitable, could be early entry
+            if (balanceChange > 0) {
+              earlyPlays++;
+            }
           }
         }
         
@@ -411,31 +343,64 @@ async function calculateInsiderScore(connection, publicKey, signatures) {
       }
     }
     
-    // Bonus for high transaction frequency (indicates active trading)
-    if (signatures.length > 30) {
-      score += 10;
-    } else if (signatures.length > 20) {
-      score += 7;
-    } else if (signatures.length > 10) {
-      score += 5;
+    // Calculate success rate (should be LOW for insiders due to wash trading)
+    const successRate = totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0;
+    
+    // INSIDER CRITERIA: Must meet these conditions
+    const isInsider = (
+      quickTrades >= 10 &&          // At least 10 quick trades (wash trading volume)
+      earlyPlays >= 2 &&            // At least 2 early plays (hidden among wash trades)
+      successRate <= 50 &&          // Low success rate due to wash trading
+      totalTrades >= 30             // High transaction volume to mask patterns
+    );
+    
+    // Determine reason for classification
+    let reason = '';
+    if (isInsider) {
+      reason = `INSIDER: ${quickTrades} wash trades, ${earlyPlays} early plays, ${successRate.toFixed(1)}% win rate (low due to wash trading)`;
+    } else {
+      const missing = [];
+      if (quickTrades < 10) missing.push(`Need ${10-quickTrades} more wash trades`);
+      if (earlyPlays < 2) missing.push(`Need ${2-earlyPlays} more early plays`);
+      if (successRate > 50) missing.push(`Win rate too high (${successRate.toFixed(1)}%) - insiders have low rates`);
+      if (totalTrades < 30) missing.push(`Need ${30-totalTrades} more total trades`);
+      reason = `NOT INSIDER: ${missing.join(', ')}`;
     }
     
+    // Get detected patterns
+    const patterns = [];
+    if (quickTrades >= 10) patterns.push('High Wash Trading');
+    if (earlyPlays >= 2) patterns.push('Hidden Early Plays');
+    if (successRate <= 50) patterns.push('Low Win Rate (Wash Trading)');
+    if (totalTrades >= 30) patterns.push('High Transaction Volume');
+    
+    return {
+      isInsider,
+      reason,
+      quickTrades,
+      earlyPlays,
+      successRate,
+      washTradeVolume: washTradeVolume.toFixed(2),
+      totalProfit,
+      patterns,
+      totalTrades,
+      successfulTrades
+    };
+    
   } catch (error) {
-    console.warn('Insider score calculation failed:', error.message);
+    console.warn('Insider criteria check failed:', error.message);
+    return {
+      isInsider: false,
+      reason: 'Analysis failed',
+      quickTrades: 0,
+      earlyPlays: 0,
+      successRate: 0,
+      washTradeVolume: '0.00',
+      totalProfit: 0,
+      patterns: [],
+      totalTrades: 0,
+      successfulTrades: 0
+    };
   }
-  
-  // Cap the score
-  return Math.min(100, Math.max(0, score));
 }
 
-// Get detected patterns based on insider score
-function getDetectedPatterns(insiderScore) {
-  const patterns = [];
-  
-  if (insiderScore > 60) patterns.push('Early Entry');
-  if (insiderScore > 70) patterns.push('Quick Exit');
-  if (insiderScore > 75) patterns.push('Volume Spike');
-  if (insiderScore > 80) patterns.push('Token Hopping');
-  
-  return patterns;
-}
