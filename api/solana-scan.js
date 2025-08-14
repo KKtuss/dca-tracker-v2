@@ -94,25 +94,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { scanType, scanDepth, walletAddress, batchWallets, rpcEndpoint, test } = body || {};
+    const { scanType, scanDepth = 50, rpcEndpoint, ultraFastTest, autoDiscoveryMode = false, maxWalletsToDiscover = 1000 } = body;
 
     // Handle test request
-    if (test) {
-      console.log('Test request received, responding with success');
-      res.end(JSON.stringify({
-        success: true,
-        message: 'Backend API is working correctly',
-        timestamp: new Date().toISOString(),
-        cors: 'enabled',
-        origin: req.headers.origin || 'unknown',
-        bodyReceived: !!body,
-        bodyType: typeof body
-      }));
-      return;
-    }
-
-    // Handle ultra-fast test mode
-    if (body.ultraFastTest) {
+    if (ultraFastTest) {
       console.log('Ultra-fast test mode activated - returning instant results');
       res.end(JSON.stringify({
         success: true,
@@ -139,6 +124,50 @@ export default async function handler(req, res) {
         performance: 'ULTRA-FAST TEST - Instant response, no blockchain calls'
       }));
       return;
+    }
+
+    if (autoDiscoveryMode) {
+      console.log(`AUTO-DISCOVERY MODE: Discovering fresh wallets from insider sources`);
+      
+      // Add timeout wrapper for auto-discovery process
+      const autoDiscoveryPromise = (async () => {
+        // Step 1: Discover fresh wallets from recent transactions
+        const freshWallets = await discoverFreshWallets(connection, maxWalletsToDiscover);
+        console.log(`Discovered ${freshWallets.length} fresh wallets`);
+        
+        if (freshWallets.length === 0) {
+          return {
+            success: true,
+            wallets: [],
+            totalScanned: 0,
+            insidersFound: 0,
+            scanType: 'auto-discovery',
+            message: 'No fresh wallets found in recent transactions'
+          };
+        }
+        
+        // Step 2: Process discovered wallets in batches
+        const insiderWallets = await processWalletBatch(connection, freshWallets, limitedScanDepth);
+        
+        return {
+          success: true,
+          wallets: insiderWallets,
+          totalScanned: freshWallets.length,
+          insidersFound: insiderWallets.length,
+          scanType: 'auto-discovery',
+          message: `Auto-discovery completed: ${insiderWallets.length} insider wallets found from ${freshWallets.length} discovered wallets`
+        };
+      })();
+      
+      // 45 second timeout for auto-discovery (more generous than regular scans)
+      const result = await Promise.race([
+        autoDiscoveryPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Auto-discovery timed out - try reducing max wallets or scan depth')), 45000)
+        )
+      ]);
+      
+      return res.status(200).json(result);
     }
 
     // OPTIMIZATION: Limit scan depth to prevent timeouts
@@ -188,15 +217,23 @@ export default async function handler(req, res) {
     
     // Better error messages for timeouts
     let errorMessage = error.message;
+    let recommendation = 'For faster results, try scanning specific wallets or reduce scan depth to 100-200 transactions';
+    
     if (error.message.includes('timeout')) {
-      errorMessage = 'Scan timed out - try reducing scan depth or use specific wallet scan instead';
+      if (error.message.includes('Auto-discovery')) {
+        errorMessage = 'Auto-discovery timed out - try reducing max wallets or scan depth';
+        recommendation = 'Try reducing max wallets to 25-50 and scan depth to 10-25 transactions for faster results';
+      } else {
+        errorMessage = 'Scan timed out - try reducing scan depth or use specific wallet scan instead';
+        recommendation = 'For faster results, try scanning specific wallets or reduce scan depth to 100-200 transactions';
+      }
     }
     
     res.end(JSON.stringify({
       success: false,
       error: errorMessage,
       message: 'Scan failed on backend',
-      recommendation: 'For faster results, try scanning specific wallets or reduce scan depth to 100-200 transactions'
+      recommendation: recommendation
     }));
   }
 }
@@ -624,6 +661,188 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
       patterns: [],
       totalTrades: 0
     };
+  }
+}
+
+// New function: Discover fresh wallets from recent transactions
+async function discoverFreshWallets(connection, maxWallets) {
+  const insiderWallets = [
+    '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9', // Binance 2
+    'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t', // Changenow
+  ];
+  
+  const discoveredWallets = new Set();
+  
+  // Add overall timeout for the entire discovery process
+  const discoveryTimeout = 30000; // 30 seconds max
+  
+  try {
+    await Promise.race([
+      discoverWalletsInternal(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Discovery process timed out')), discoveryTimeout)
+      )
+    ]);
+  } catch (error) {
+    console.log('Discovery timeout or error:', error.message);
+    // Return whatever we found before timeout
+  }
+  
+  return Array.from(discoveredWallets);
+  
+  async function discoverWalletsInternal() {
+    for (const insiderWallet of insiderWallets) {
+      try {
+        console.log(`Scanning transactions from ${insiderWallet === insiderWallets[0] ? 'Binance 2' : 'Changenow'}`);
+        
+        // Get recent signatures with timeout
+        const signaturesPromise = connection.getSignaturesForAddress(
+          new PublicKey(insiderWallet),
+          { limit: 100 } // Reduced from 200 to 100 for faster processing
+        );
+        
+        const signatures = await Promise.race([
+          signaturesPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Signatures fetch timeout')), 10000) // 10 second timeout
+          )
+        ]);
+        
+        // Process transactions in smaller chunks with timeouts
+        const chunkSize = 10; // Reduced from 20 to 10
+        for (let i = 0; i < signatures.length && discoveredWallets.size < maxWallets; i += chunkSize) {
+          const chunk = signatures.slice(i, i + chunkSize);
+          
+          const chunkPromises = chunk.map(async (sig) => {
+            try {
+              // Add timeout to transaction fetch
+              const txPromise = connection.getTransaction(sig.signature, {
+                maxSupportedTransactionVersion: 0
+              });
+              
+              const tx = await Promise.race([
+                txPromise,
+                new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Transaction fetch timeout')), 5000) // 5 second timeout
+                )
+              ]);
+              
+              if (tx && tx.meta && tx.transaction.message.instructions) {
+                // Look for SOL transfers
+                for (const instruction of tx.transaction.message.instructions) {
+                  if (instruction.programId.toString() === '11111111111111111111111111111111') { // System Program
+                    // Check if this is a transfer to a new wallet
+                    const recipient = instruction.accounts[1];
+                    if (recipient) {
+                      const preBalance = tx.meta.preBalances[1] || 0;
+                      const postBalance = tx.meta.postBalances[1] || 0;
+                      const transferAmount = (postBalance - preBalance) / 1e9; // Convert lamports to SOL
+                      
+                      // Check if this matches our criteria: 0.5-2.5 SOL
+                      if (transferAmount >= 0.5 && transferAmount <= 2.5) {
+                        // Simplified check - assume it's fresh if we haven't seen it before
+                        discoveredWallets.add({
+                          address: recipient.toString(),
+                          fundingSource: insiderWallet,
+                          fundingAmount: transferAmount,
+                          discoveredFrom: sig.signature
+                        });
+                        
+                        // Stop if we have enough wallets
+                        if (discoveredWallets.size >= maxWallets) {
+                          console.log(`Reached max wallets limit: ${maxWallets}`);
+                          return;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.log(`Error processing transaction ${sig.signature}:`, error.message);
+            }
+          });
+          
+          // Process chunk with timeout
+          await Promise.race([
+            Promise.all(chunkPromises),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Chunk processing timeout')), 15000) // 15 second timeout
+            )
+          ]);
+          
+          // Small delay to avoid rate limiting
+          if (i + chunkSize < signatures.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+        
+      } catch (error) {
+        console.log(`Error scanning ${insiderWallet}:`, error.message);
+      }
+    }
+  }
+}
+
+// New function: Process discovered wallets in batches
+async function processWalletBatch(connection, wallets, scanDepth) {
+  const allResults = [];
+  const batchSize = 5; // Reduced from 10 to 5 for faster processing
+  const batchTimeout = 20000; // 20 seconds per batch
+  
+  for (let i = 0; i < wallets.length; i += batchSize) {
+    const batch = wallets.slice(i, i + batchSize);
+    console.log(`Processing batch ${Math.floor(i/batchSize) + 1}: ${batch.length} wallets`);
+    
+    try {
+      // Process batch with timeout
+      const batchResults = await Promise.race([
+        processBatchInternal(batch),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Batch processing timeout')), batchTimeout)
+        )
+      ]);
+      
+      allResults.push(...batchResults.filter(result => result !== null));
+      
+    } catch (error) {
+      console.log(`Batch ${Math.floor(i/batchSize) + 1} failed:`, error.message);
+      // Continue with next batch instead of failing completely
+    }
+    
+    // Small delay between batches
+    if (i + batchSize < wallets.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  
+  return allResults.filter(wallet => wallet.isInsider);
+  
+  async function processBatchInternal(batch) {
+    const batchPromises = batch.map(async (walletInfo) => {
+      try {
+        // Add timeout to individual wallet analysis
+        const analysisPromise = analyzeWalletForInsiderPatterns(connection, walletInfo.address, scanDepth);
+        const analysis = await Promise.race([
+          analysisPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Wallet analysis timeout')), 10000) // 10 second timeout per wallet
+          )
+        ]);
+        
+        // Add funding information to the analysis
+        if (analysis) {
+          analysis.fundingSource = walletInfo.fundingSource;
+          analysis.fundingAmount = walletInfo.fundingAmount;
+        }
+        return analysis;
+      } catch (error) {
+        console.log(`Error analyzing wallet ${walletInfo.address}:`, error.message);
+        return null;
+      }
+    });
+    
+    return await Promise.all(batchPromises);
   }
 }
 
