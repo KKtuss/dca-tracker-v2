@@ -1,18 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 
-// Helper function to get raw body for Vercel
-async function getRawBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', chunk => {
-      data += chunk;
-    });
-    req.on('end', () => {
-      resolve(data);
-    });
-    req.on('error', reject);
-  });
-}
+
 
 export default async function handler(req, res) {
   console.log('Solana scan endpoint called:', {
@@ -77,14 +65,26 @@ export default async function handler(req, res) {
   // Check if body exists and parse it
   let body = req.body;
   
-  // If body is undefined but we have JSON content-type, try to parse it
-  if (!body && req.headers['content-type'] === 'application/json') {
+  // Log what we received
+  console.log('Received body:', body);
+  console.log('Body type:', typeof body);
+  
+  // If body is undefined or null, return error
+  if (!body) {
+    res.json({
+      success: false,
+      error: 'Request body is missing',
+      message: 'Please ensure Content-Type is application/json and body is valid JSON',
+      receivedBody: req.body,
+      contentType: req.headers['content-type']
+    });
+    return;
+  }
+  
+  // If body is a string, try to parse it as JSON
+  if (typeof body === 'string') {
     try {
-      // For Vercel, sometimes the body needs to be parsed from raw
-      const rawBody = await getRawBody(req);
-      if (rawBody) {
-        body = JSON.parse(rawBody.toString());
-      }
+      body = JSON.parse(body);
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
       res.json({
@@ -95,18 +95,6 @@ export default async function handler(req, res) {
       });
       return;
     }
-  }
-  
-  // If still no body, return error
-  if (!body) {
-    res.json({
-      success: false,
-      error: 'Request body is missing',
-      message: 'Please ensure Content-Type is application/json and body is valid JSON',
-      receivedBody: req.body,
-      contentType: req.headers['content-type']
-    });
-    return;
   }
 
   try {
@@ -165,6 +153,10 @@ export default async function handler(req, res) {
         'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
       });
       
+      // Force set CORS headers again before response
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+      
       const simpleCorsResult = {
         success: true,
         message: 'Simple CORS test successful',
@@ -183,6 +175,31 @@ export default async function handler(req, res) {
       
       res.status(200).json(simpleCorsResult);
       console.log('Simple CORS test response sent successfully');
+      return;
+    }
+    
+    // Handle plain text CORS test request
+    if (body.plainTextCorsTest) {
+      console.log('Plain text CORS test mode activated - testing with text response');
+      
+      // Force set CORS headers
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+      
+      // Set content type to text
+      res.setHeader('Content-Type', 'text/plain');
+      
+      const textResponse = `CORS Test Response
+Timestamp: ${new Date().toISOString()}
+Method: ${req.method}
+CORS: enabled
+Access-Control-Allow-Origin: ${res.getHeader('Access-Control-Allow-Origin')}
+Access-Control-Allow-Methods: ${res.getHeader('Access-Control-Allow-Methods')}
+Access-Control-Allow-Headers: ${res.getHeader('Access-Control-Allow-Headers')}`;
+      
+      console.log('Plain text CORS test response:', textResponse);
+      res.status(200).send(textResponse);
       return;
     }
 
