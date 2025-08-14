@@ -467,7 +467,9 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
     // ULTRA-AGGRESSIVE: Analyze fewer transactions for instant results (max 10 instead of 20)
     const maxTransactions = Math.min(signatures.length, 10);
     
-    // First, check if this wallet was funded by known insider wallets
+    // First, check if this wallet was FIRST funded by known insider wallets (fresh wallet)
+    let isFirstFunding = false;
+    
     for (let i = 0; i < maxTransactions; i++) {
       try {
         // ULTRA-AGGRESSIVE: 1 second timeout per transaction
@@ -498,9 +500,18 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
                 if (balanceChange > 0) {
                   const solAmount = balanceChange / 1e9;
                   if (solAmount >= 0.5 && solAmount <= 2.5) {
-                    fundingSource = keyString;
-                    fundingAmount = solAmount;
-                    console.log(`ULTRA-FAST: Found insider funding: ${solAmount.toFixed(4)} SOL from ${keyString}`);
+                    // Check if this is the FIRST transaction (fresh wallet)
+                    // If preBalance is 0 or very low, this is likely the first funding
+                    const isFreshWallet = preBalance <= 1000; // Less than 0.001 SOL before funding
+                    
+                    if (isFreshWallet) {
+                      fundingSource = keyString;
+                      fundingAmount = solAmount;
+                      isFirstFunding = true;
+                      console.log(`ULTRA-FAST: Found FRESH wallet funding: ${solAmount.toFixed(4)} SOL from ${keyString} (pre-balance: ${preBalance})`);
+                    } else {
+                      console.log(`ULTRA-FAST: Skipping existing wallet funding: ${solAmount.toFixed(4)} SOL from ${keyString} (pre-balance: ${preBalance})`);
+                    }
                   }
                 }
               }
@@ -555,6 +566,7 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
     // ULTRA-AGGRESSIVE: Relaxed insider criteria for instant results
     const isInsider = (
       fundingSource !== null &&     // Must be funded by known insider wallet
+      isFirstFunding &&             // Must be FIRST funding (fresh wallet)
       fundingAmount >= 0.5 &&      // Funding amount between 0.5-2.5 SOL
       fundingAmount <= 2.5 &&
       quickTrades >= 3 &&          // ULTRA-AGGRESSIVE: Reduced from 5 to 3 quick trades
@@ -565,10 +577,11 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
     // Determine reason for classification
     let reason = '';
     if (isInsider) {
-      reason = `INSIDER: Funded by ${fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'} with ${fundingAmount.toFixed(4)} SOL. ${quickTrades} wash trades, ${goodPlays} good plays.`;
+      reason = `INSIDER: FRESH wallet FIRST funded by ${fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'} with ${fundingAmount.toFixed(4)} SOL. ${quickTrades} wash trades, ${goodPlays} good plays.`;
     } else {
       const missing = [];
       if (!fundingSource) missing.push('Not funded by insider wallet');
+      if (!isFirstFunding) missing.push('Not a fresh wallet (already existed before funding)');
       if (fundingAmount < 0.5 || fundingAmount > 2.5) missing.push(`Funding amount ${fundingAmount.toFixed(4)} SOL outside 0.5-2.5 range`);
       if (quickTrades < 3) missing.push(`Need ${3-quickTrades} more wash trades`); // Updated missing message
       if (goodPlays < 1) missing.push(`Need ${1-goodPlays} more good plays`);
@@ -578,7 +591,7 @@ async function checkInsiderCriteria(connection, publicKey, signatures) {
     
     // Get detected patterns
     const patterns = [];
-    if (fundingSource) patterns.push(`Funded by ${fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'}`);
+    if (fundingSource && isFirstFunding) patterns.push(`FRESH wallet FIRST funded by ${fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'}`);
     if (fundingAmount >= 0.5 && fundingAmount <= 2.5) patterns.push('Optimal Funding Range');
     if (quickTrades >= 3) patterns.push('High Wash Trading'); // Updated pattern message
     if (goodPlays >= 1) patterns.push('Hidden Good Plays');
