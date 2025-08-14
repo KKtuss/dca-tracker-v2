@@ -239,6 +239,28 @@
             box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
             border-color: #00ffff;
         }
+        
+        .insider-wallet {
+            background: rgba(60, 20, 20, 0.9);
+            border: 2px solid #ff4444;
+            box-shadow: 0 0 20px rgba(255, 68, 68, 0.3);
+        }
+        
+        .insider-wallet:hover {
+            box-shadow: 0 0 30px rgba(255, 68, 68, 0.5);
+            border-color: #ff6666;
+        }
+        
+        .normal-wallet {
+            background: rgba(20, 60, 20, 0.9);
+            border: 2px solid #44ff44;
+            box-shadow: 0 0 20px rgba(68, 255, 68, 0.3);
+        }
+        
+        .normal-wallet:hover {
+            box-shadow: 0 0 30px rgba(68, 255, 68, 0.5);
+            border-color: #66ff66;
+        }
 
         .wallet-address {
             font-family: 'Courier New', monospace;
@@ -289,7 +311,7 @@
             text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
 
-        .insider-score {
+        .insider-status {
             background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
             color: #ff4444;
             padding: 8px 15px;
@@ -297,28 +319,30 @@
             font-weight: 600;
             text-align: center;
             margin-top: 10px;
-            border: 2px solid #ff4444;
-            font-family: 'Courier New', monospace;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            position: relative;
-            overflow: hidden;
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+        }
+        
+        .normal-wallet .insider-status {
+            color: #44ff44;
+            text-shadow: 0 0 10px rgba(68, 255, 68, 0.5);
+        }
+        
+        .insider-reason {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 3px solid #00ffff;
+        }
+        
+        .funding-info {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px;
+            border-radius: 6px;
+            border-left: 3px solid #00ffff;
         }
 
-        .insider-score::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 68, 68, 0.2), transparent);
-            transition: left 0.5s;
-        }
 
-        .insider-score:hover::before {
-            left: 100%;
-        }
 
         .loading {
             text-align: center;
@@ -1367,14 +1391,18 @@
                 return;
             }
             
-            // Sort by insider score
-            scanResults.sort((a, b) => parseFloat(b.insiderScore) - parseFloat(a.insiderScore));
+            // Sort by insider status (insiders first)
+            scanResults.sort((a, b) => {
+                if (a.isInsider && !b.isInsider) return -1;
+                if (!a.isInsider && b.isInsider) return 1;
+                return 0;
+            });
             
             let html = `<h4>Found ${scanResults.length} wallets:</h4>`;
             
             scanResults.forEach(wallet => {
                 html += `
-                    <div class="wallet-item">
+                    <div class="wallet-item ${wallet.isInsider ? 'insider-wallet' : 'normal-wallet'}">
                         <div class="wallet-address">${wallet.address}</div>
                         <div class="wallet-stats">
                             <div class="stat">
@@ -1390,27 +1418,36 @@
                                 <div class="stat-value">${wallet.tokens}</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Success Rate</div>
-                                <div class="stat-value">${wallet.successRate}%</div>
+                                <div class="stat-label">Quick Trades</div>
+                                <div class="stat-value">${wallet.quickTrades || 0}</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Avg Hold Time</div>
-                                <div class="stat-value">${wallet.avgHoldTime}h</div>
+                                <div class="stat-label">Good Plays</div>
+                                <div class="stat-value">${wallet.goodPlays || 0}</div>
                             </div>
                             <div class="stat">
                                 <div class="stat-label">Total Profit</div>
-                                <div class="stat-value">${wallet.totalProfit} SOL</div>
+                                <div class="stat-value">${wallet.totalProfit || '0.00'} SOL</div>
                             </div>
                         </div>
-                                                 <div class="insider-score">
-                             Insider Score: ${wallet.insiderScore}%
-                             ${wallet.isInsider ? '🚨 HIGH RISK' : '✅ LOW RISK'}
-                         </div>
-                         ${wallet.detectedPatterns && wallet.detectedPatterns.length > 0 ? 
-                             `<div style="margin-top: 10px; font-size: 12px; color: #888;">
-                                 <strong>Detected Patterns:</strong> ${wallet.detectedPatterns.join(', ')}
-                             </div>` : ''
-                         }
+                        <div class="insider-status">
+                            ${wallet.isInsider ? '🚨 POTENTIAL INSIDER' : '✅ NORMAL WALLET'}
+                        </div>
+                        ${wallet.insiderReason ? 
+                            `<div class="insider-reason" style="margin-top: 10px; font-size: 12px; color: #888;">
+                                <strong>Analysis:</strong> ${wallet.insiderReason}
+                            </div>` : ''
+                        }
+                        ${wallet.fundingSource ? 
+                            `<div class="funding-info" style="margin-top: 5px; font-size: 11px; color: #00ffff;">
+                                <strong>Funding:</strong> ${wallet.fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 'Changenow'} (${wallet.fundingAmount} SOL)
+                            </div>` : ''
+                        }
+                        ${wallet.detectedPatterns && wallet.detectedPatterns.length > 0 ? 
+                            `<div style="margin-top: 5px; font-size: 12px; color: #888;">
+                                <strong>Patterns:</strong> ${wallet.detectedPatterns.join(', ')}
+                            </div>` : ''
+                        }
                     </div>
                 `;
             });
@@ -1429,10 +1466,12 @@
             }
             
             // Create CSV content
-            let csv = 'Address,Balance,Transactions,Tokens,Insider Score,Success Rate,Avg Hold Time,Total Profit\n';
+            let csv = 'Address,Balance,Transactions,Tokens,Is Insider,Funding Source,Funding Amount,Quick Trades,Good Plays,Total Profit,Analysis\n';
             
             storedWallets.forEach(wallet => {
-                csv += `${wallet.address},${wallet.balance},${wallet.transactions},${wallet.tokens},${wallet.insiderScore},${wallet.successRate},${wallet.avgHoldTime},${wallet.totalProfit}\n`;
+                const fundingSource = wallet.fundingSource === '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' ? 'Binance 2' : 
+                                    wallet.fundingSource === 'G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t' ? 'Changenow' : 'None';
+                csv += `${wallet.address},${wallet.balance},${wallet.transactions},${wallet.tokens},${wallet.isInsider ? 'YES' : 'NO'},${fundingSource},${wallet.fundingAmount || '0.0000'},${wallet.quickTrades || 0},${wallet.goodPlays || 0},${wallet.totalProfit || '0.00'},${wallet.insiderReason || 'N/A'}\n`;
             });
             
             // Download file
