@@ -571,18 +571,15 @@
                     <textarea id="batchWallets" rows="5" placeholder="Enter wallet addresses, one per line..."></textarea>
                 </div>
 
+                <!-- Scan Depth Selection -->
                 <div class="form-group">
-                                         <label for="scanDepth">Scan Depth:</label>
-                     <select id="scanDepth">
-                         <option value="100">100 transactions</option>
-                         <option value="500">500 transactions</option>
-                         <option value="1000">1000 transactions</option>
-                         <option value="5000">5000 transactions</option>
-                     </select>
-                     <small style="color: #888; font-size: 12px; margin-top: 5px; display: block;">
-                         💡 <strong>Performance Tip:</strong> Start with 100-500 transactions for faster results. 
-                         Larger scans may take 30-60 seconds and could timeout.
-                     </small>
+                  <label for="scanDepth">Scan Depth:</label>
+                  <select id="scanDepth" class="form-control">
+                    <option value="50">50 transactions (Ultra-fast)</option>
+                    <option value="100" selected>100 transactions (Fast)</option>
+                    <option value="200">200 transactions (Standard)</option>
+                  </select>
+                  <small class="form-text text-muted">Performance Tip: Use 50-100 transactions for fastest results. Higher depths may timeout.</small>
                 </div>
 
                 <button class="btn" onclick="startScan()">🚀 Start Scan</button>
@@ -905,7 +902,7 @@
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
                     
-                    updateStatus('Analyzing blockchain data... This may take 30-60 seconds for large scans.', 'info');
+                    updateStatus('Analyzing blockchain data... This may take 10-20 seconds for optimized scans.', 'info');
                     
                     const response = await fetch('https://dca-tracker-v2.vercel.app/api/solana-scan', {
                         method: 'POST',
@@ -948,7 +945,7 @@
                     });
                     
                     if (fetchError.name === 'AbortError') {
-                        throw new Error('Request timed out after 60 seconds. Try reducing scan depth or use specific wallet scan.');
+                        throw new Error('Request timed out after 60 seconds. Try reducing scan depth to 50-100 transactions for faster results.');
                     }
                     if (fetchError.message.includes('CORS') || fetchError.message.includes('Failed to fetch')) {
                         throw new Error('CORS error: Backend not accessible from browser. This is a common issue with local HTML files.');
