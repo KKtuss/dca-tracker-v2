@@ -21,25 +21,36 @@ export default async function handler(req, res) {
     headers: req.headers
   });
 
-  // Set ALL CORS headers explicitly
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
-  res.setHeader('Access-Control-Max-Age', '86400');
-  res.setHeader('Access-Control-Allow-Credentials', 'false');
-
-  // Handle preflight OPTIONS request
+  // Handle preflight OPTIONS request FIRST
   if (req.method === 'OPTIONS') {
     console.log('Handling OPTIONS preflight request');
-    res.status(200).json({
+    res.writeHead(200, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Origin, Accept',
+      'Access-Control-Max-Age': '86400',
+      'Access-Control-Allow-Credentials': 'false',
+      'Content-Type': 'application/json'
+    });
+    res.end(JSON.stringify({
       success: true,
       message: 'OPTIONS preflight successful',
       timestamp: new Date().toISOString(),
       method: 'OPTIONS',
       cors: 'enabled'
-    });
+    }));
     return;
   }
+
+  // Set CORS headers for all other requests
+  res.writeHead(200, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Origin, Accept',
+    'Access-Control-Max-Age': '86400',
+    'Access-Control-Allow-Credentials': 'false',
+    'Content-Type': 'application/json'
+  });
 
   // Log request details for debugging
   console.log(`[${new Date().toISOString()}] ${req.method} request to /api/solana-scan`);
@@ -60,24 +71,26 @@ export default async function handler(req, res) {
       }
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
-      return res.status(400).json({
+      res.end(JSON.stringify({
         success: false,
         error: 'Invalid JSON in request body',
         message: 'Request body must be valid JSON',
         parseError: parseError.message
-      });
+      }));
+      return;
     }
   }
   
   // If still no body, return error
   if (!body) {
-    return res.status(400).json({
+    res.end(JSON.stringify({
       success: false,
       error: 'Request body is missing',
       message: 'Please ensure Content-Type is application/json and body is valid JSON',
       receivedBody: req.body,
       contentType: req.headers['content-type']
-    });
+    }));
+    return;
   }
 
   try {
@@ -86,7 +99,7 @@ export default async function handler(req, res) {
     // Handle test request
     if (test) {
       console.log('Test request received, responding with success');
-      return res.status(200).json({
+      res.end(JSON.stringify({
         success: true,
         message: 'Backend API is working correctly',
         timestamp: new Date().toISOString(),
@@ -94,11 +107,12 @@ export default async function handler(req, res) {
         origin: req.headers.origin || 'unknown',
         bodyReceived: !!body,
         bodyType: typeof body
-      });
+      }));
+      return;
     }
 
     // OPTIMIZATION: Limit scan depth to prevent timeouts
-    const limitedScanDepth = Math.min(scanDepth || 100, 500); // Max 500 transactions
+    const limitedScanDepth = Math.min(scanDepth || 100, 200); // Reduced max to 200 transactions
     
     // Use Helius RPC or fallback to public
     const endpoint = rpcEndpoint || 'https://api.mainnet-beta.solana.com';
@@ -106,7 +120,7 @@ export default async function handler(req, res) {
 
     let results = [];
 
-    // OPTIMIZATION: Add overall timeout for the entire scan
+    // OPTIMIZATION: Add overall timeout for the entire scan - REDUCED to 25 seconds
     const scanPromise = (async () => {
       if (scanType === 'recent') {
         results = await scanRecentTransactions(connection, limitedScanDepth);
@@ -117,21 +131,21 @@ export default async function handler(req, res) {
       }
     })();
 
-    // 60 second overall timeout
+    // 25 second overall timeout (reduced from 60)
     await Promise.race([
       scanPromise,
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Scan timeout - too many transactions to analyze')), 60000)
+        setTimeout(() => reject(new Error('Scan timeout - too many transactions to analyze')), 25000)
       )
     ]);
 
-    res.status(200).json({
+    res.end(JSON.stringify({
       success: true,
       data: results,
       message: `Found ${results.length} wallets with insider patterns`,
       scanDepth: limitedScanDepth,
-      performance: 'Optimized for speed - limited to 500 transactions max'
-    });
+      performance: 'Optimized for speed - limited to 200 transactions max'
+    }));
 
   } catch (error) {
     console.error('Backend scan error:', error);
@@ -142,12 +156,12 @@ export default async function handler(req, res) {
       errorMessage = 'Scan timed out - try reducing scan depth or use specific wallet scan instead';
     }
     
-    res.status(500).json({
+    res.end(JSON.stringify({
       success: false,
       error: errorMessage,
       message: 'Scan failed on backend',
       recommendation: 'For faster results, try scanning specific wallets or reduce scan depth to 100-200 transactions'
-    });
+    }));
   }
 }
 
