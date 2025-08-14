@@ -623,21 +623,22 @@
                         🔍 Start Auto-Discovery Scan
                     </button>
                     
-                        <button type="button" class="btn btn-outline-info btn-lg ms-2" onclick="testAutoDiscovery()">
-        🧪 Test Auto-Discovery
-    </button>
-    
-    <button type="button" class="btn btn-outline-warning btn-lg ms-2" onclick="testHealthCheck()">
-        🏥 Health Check
-    </button>
+                    <div class="test-buttons">
+                        <button onclick="testAutoDiscovery()" class="btn btn-info">🧪 Test Auto-Discovery</button>
+                        <button onclick="testHealthCheck()" class="btn btn-success">🏥 Health Check</button>
+                        <button onclick="testCors()" class="btn btn-warning">🔒 CORS Test</button>
+                        <button onclick="quickAutoDiscoveryTest()" class="btn btn-secondary">⚡ Quick Test</button>
+                    </div>
                     
-                    <div class="form-text text-muted" style="margin-top: 10px;">
-                                                 💡 <strong>Performance Tips:</strong>
-                         <br>• <strong>For testing:</strong> Use 25 wallets + 10 transactions (fastest)
-                         <br>• <strong>For production:</strong> Use 100+ wallets + 25+ transactions
-                         <br>• <strong>Timeout protection:</strong> Auto-discovery now has 60-second timeout with progress tracking
-                         <br>• <strong>Test Mode:</strong> Use the "Test Auto-Discovery" button to verify the frontend functionality works correctly.
-                         <br>• <strong>Debug Mode:</strong> Use the "Health Check" button to test basic API connectivity.
+                    <div class="alert alert-info">
+                        <strong>💡 Performance Tips:</strong>
+                        <ul class="mb-0">
+                            <li>Use "Health Check" to verify API connectivity</li>
+                            <li>Use "CORS Test" to verify CORS headers are working</li>
+                            <li>Use "Quick Test" for fast endpoint testing</li>
+                            <li>Start with conservative settings (25 wallets, 10 depth) for faster results</li>
+                            <li>Use specific wallet addresses for targeted analysis</li>
+                        </ul>
                     </div>
                     
                     <div id="autoDiscoveryProgress" class="progress-info" style="display: none;">
@@ -2292,6 +2293,86 @@ async function testBackendConnection() {
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, auto-discovery functions ready');
         });
+
+        // Test CORS functionality
+        async function testCors() {
+            try {
+                console.log('🔒 Testing CORS functionality...');
+                
+                const response = await fetch('https://dca-tracker-v2.vercel.app/api/solana-scan', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        corsTest: true
+                    })
+                });
+                
+                console.log('CORS test response status:', response.status);
+                console.log('CORS test response headers:', response.headers);
+                
+                const data = await response.json();
+                console.log('CORS test response:', data);
+                
+                if (data.success) {
+                    showAlert(`CORS Test Successful! Headers: ${JSON.stringify(data.headers)}`, 'success');
+                } else {
+                    showAlert(`CORS Test Failed: ${data.error || 'Unknown error'}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('CORS test error:', error);
+                showAlert(`CORS Test Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Quick auto-discovery test (minimal parameters for fast response)
+        async function quickAutoDiscoveryTest() {
+            try {
+                console.log('⚡ Quick auto-discovery test...');
+                
+                const response = await fetch('https://dca-tracker-v2.vercel.app/api/solana-scan', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        scanType: 'auto-discovery',
+                        scanDepth: 1, // Minimal depth
+                        rpcEndpoint: 'https://api.mainnet-beta.solana.com', // Use public RPC
+                        autoDiscoveryMode: true,
+                        maxWalletsToDiscover: 1 // Minimal wallets
+                    })
+                });
+                
+                console.log('Quick test response status:', response.status);
+                console.log('Quick test response headers:', response.headers);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Quick test response:', data);
+                
+                if (data.success) {
+                    showAlert(`Quick Test Successful! Found ${data.insidersFound || 0} wallets`, 'success');
+                    // Display results
+                    window.scanResults = data.wallets || [];
+                    displayResults();
+                } else {
+                    throw new Error(data.error || 'Quick test failed');
+                }
+                
+            } catch (error) {
+                console.error('Quick test error:', error);
+                showAlert(`Quick Test Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test CORS functionality
     </script>
 </body>
 </html>
